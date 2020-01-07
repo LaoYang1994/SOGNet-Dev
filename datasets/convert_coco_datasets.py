@@ -6,7 +6,7 @@ import multiprocessing
 import numpy as np
 
 try:
-    import pycocotools.coco as COCO
+    from pycocotools.coco import COCO
     from pycocotools import mask as COCOmask
 except Exception:
     raise Exception("Please install pycocotools module from https://github.com/cocodataset/cocoapi")
@@ -24,7 +24,8 @@ def parse():
 def main():
     args = parse()
     ins_anno = COCO(args.coco_instance_json_anno)
-    pan_anno = COCO(args.coco_panoptic_json_anno)
+    img_ids = ins_anno.getImgIds()
+    # pan_anno = COCO(args.coco_panoptic_json_anno)
 
 
 if __name__ == "__main__":
