@@ -160,18 +160,18 @@ class XDeformConvSemSegFPNHead(nn.Module):
             seg_feature_list.append(seg_feature)
         seg_features = torch.cat(seg_feature_list, dim=1)
 
-        sem_seg_scores = self.predictor(seg_features)
-        sem_seg_scores = F.interpolate(
-            sem_seg_scores, scale_factor=self.common_stride, mode="bilinear", align_corners=False)
+        sem_seg_logits = self.predictor(seg_features)
+        sem_seg_logits = F.interpolate(
+            sem_seg_logits, scale_factor=self.common_stride, mode="bilinear", align_corners=False)
 
         if self.training:
             assert targets is not None
             losses = {}
             losses["loss_sem_seg"] = (
                 F.cross_entropy(
-                    sem_seg_scores, targets, reduction="mean", ignore_index=self.ignore_value)
+                    sem_seg_logits, targets, reduction="mean", ignore_index=self.ignore_value)
                 * self.loss_weight
             )
-            return [], losses
+            return sem_seg_logits, losses
         else:
-            return sem_seg_scores, {}
+            return sem_seg_logits, {}
