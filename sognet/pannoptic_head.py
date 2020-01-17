@@ -18,6 +18,7 @@ class PanopticHead(nn.Module):
         sem_seg_num_classes      = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
         self.thing_num_classes   = cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.stuff_num_classes   = sem_seg_num_classes - self.thing_num_classes
+        self.mask_size = 100
 
     def forward_single(self,
                        stuff_logits,
@@ -76,7 +77,7 @@ class PanopticHead(nn.Module):
             pan_logits.append(pan_logit_single)
             pan_losses.append(pan_loss_single)
 
-    def _crop_thing_logits(self, thing_sem_seg_logits, bbox, cls_idx):
+    def _crop_thing_logits_single(self, thing_sem_seg_logits, bbox, cls_idx):
 
         h, w = thing_sem_seg_logits.size()[-2:]
         device = thing_sem_seg_logits.device
@@ -95,8 +96,29 @@ class PanopticHead(nn.Module):
 
         return thing_logits
 
-    def _unmap_mask_logits(self, mask_logits, bbox, cls_idx, size):
+    def _unmap_mask_logits_single(self, mask_logits, bbox, cls_idx, size):
         device = mask_logits.device
         num_things = cls_idx.size(0)
         thing_mask_logits = torch.zeros((1, num_things) + size, device=device)
-        pass
+
+        if num_things == 0:
+            return thing_mask_logits
+
+        bbox = bbox.long()
+        bbox_w = bbox[:, 2] - bbox[:, 0] + 1
+        bbox_h = bbox[:, 3] - bbox[:, 1] + 1
+
+        for i in range(num_things):
+            ref_box = boxes[i, :].long()
+            h, w = bbox_h[i], bbox_w[i]
+            mask = F.upsample(
+                mask_logits[i, 0].view(1, 1, self.mask_size, self.mask_size),
+                size=(h, w), mode='bilinear', align_corners=False)
+            x0 = max(ref_box[0], 0)
+            x1 = min(ref_box[2] + 1, size[1])
+            y0 = max(ref_box[1], 0)
+            y1 = min(ref_box[3] + 1, size[0])
+            thing_mask_logits[0, i, y0: y1, x0: x1] = \
+                mask[0, 0, y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]]
+        
+        return thing_mask_logits
