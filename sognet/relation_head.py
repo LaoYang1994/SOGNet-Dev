@@ -1,8 +1,3 @@
-#!/usr/bin/python
-# @Author  : LaoYang
-# @Email   : lhy_ustb@pku.edu.cn
-# @Software: VsCode
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -39,10 +34,10 @@ class RelationHead(nn.Module):
         nn.init.kaiming_normal_(self.P.weight)
 
     def extract_position_matrix(self, rois):
-        x_min = rois[:, 1]
-        y_min = rois[:, 2]
-        x_max = rois[:, 3]
-        y_max = rois[:, 4]
+        x_min = rois[:, 0]
+        y_min = rois[:, 1]
+        x_max = rois[:, 2]
+        y_max = rois[:, 3]
         w = x_max - x_min
         h = y_max - y_min
         x_ctr = (x_min + x_max) / 2.
@@ -59,71 +54,50 @@ class RelationHead(nn.Module):
 
         return torch.cat([dx[..., None], dy[..., None], dw[..., None], dh[..., None]], dim=2)
 
-    def cls2onehot(self, cls_idx):
-        assert (cls_idx >= 1).all()
-        assert (cls_idx <= 80).all()
-        cls_idx = cls_idx - 1
-        onehot = torch.arange(80).to(cls_idx.device)
-        onehot = (cls_idx[:, None] == onehot).float()
-        return onehot
+    def cls_relation(self, cls_idx):
+        assert ((cls_idx >= 1) & (cls_idx <= 80)).all()
+        one_hot_embedding = F.one_hot(
+            cls_idx - 1, self.thing_num_classes - 1).float()
 
-    def cls_relation(self, onehot):
-        feat1 = self.U(onehot)
-        feat2 = self.V(onehot)
+        feat1 = self.U(one_hot_embedding)
+        feat2 = self.V(one_hot_embedding)
+
         cls_relation = feat1[:, None, :] * feat2
+
         return cls_relation
+    
+    def position_relation(self, bbox):
+        bbox_relative_embedding = self.extract_position_matrix(bbox)
+        bbox_relative_embedding = bbox_relative_embedding.permute(
+            2, 0, 1).unsqueeze(0)
+        bbox_relation = self.W(bbox_relative_embedding)
+        bbox_relation = bbox_relation.squeeze(0).permute(1, 2, 0)
 
-    def forward(self, mask, bbox, cls_idx):
-        if cls_idx.size(0) <= 1:
-            return mask, torch.tensor([0]).to(mask.device)
-        onehot = self.cls2onehot(cls_idx)
-        cls_relation = self.cls_relation(onehot)
+        return bbox_relation
 
-        bbox_mat = self.extract_position_matrix(bbox)
-        bbox_feat = self.W(bbox_mat.permute(2, 0, 1)[None, ...]).squeeze(0).permute(1, 2, 0)
+    def forward(self, mask_logits, bbox, cls_idx, relation_gt=None):
+        device = mask_logits.device
+        num_things = cls_idx.size(0)
+        if num_things <= 1:
+            return mask_logits, torch.tensor([0]).to(mask.device)
 
-        feat = torch.cat([cls_relation, bbox_feat], dim=2)
-        logit = self.P(feat.permute(2, 0, 1)[None, ...])
-        R = torch.sigmoid(logit).squeeze(0).squeeze(0)
-        OO = R - R.transpose(0, 1)
-        O = F.relu(OO, inplace=True)
+        cls_relation = self.cls_relation(cls_idx)
+        pos_relation = self.position_relation(bbox)
+
+        relation_feat = torch.cat([cls_relation, pos_relation], dim=2)
+        relation_embedding = self.P(relation_feat.permute(2, 0, 1)).unsqueeze(0)
+        overlap_score = torch.sigmoid(relation_embedding).squeeze(0).squeeze(0)
+        relation_score = F.relu(overlap_score - overlap_score.transpose(0, 1), inplace=True)
 
         # post process
-        trans_mask = torch.sigmoid(mask)
-        overlap_part = (mask * trans_mask)[:, :, None, ...] * trans_mask
-        overlap_part = overlap_part * O[..., None, None]
+        mask_prob = torch.sigmoid(mask_logits)
+        overlap_part = (mask_logits * mask_prob)[:, :, None, ...] * mask_prob
+        overlap_part = overlap_part * relation_score[..., None, None]
         overlap_part = overlap_part.sum(dim=2)
-        new_mask = mask - overlap_part
-        return new_mask, O
+        mask_logits_without_overlap = mask_logits - overlap_part
 
-class RelationLoss(nn.Module):
-
-    def __init__(self):
-        super(RelationLoss, self).__init__()
-
-    def forward(self, relation_mat, gt, new=False):
-        num_ins = relation_mat.size(0)
-        if num_ins <= 1:
-            return torch.tensor(0.).to(relation_mat.device)
-
-        if not new:
-            relation_mat = relation_mat + relation_mat.transpose(0, 1)
-
-
-        loss = F.mse_loss(relation_mat, gt)
-        if False and new and relation_mat.device == torch.device("cuda:0"):
-            print('\n')
-
-            format_str = '{:>4} : {:>3}/{:>3}, {:.4f}'
-            try:
-                one_item = relation_mat[gt > 0.5]
-                zero_item = relation_mat[gt < 0.5]
-                one_true_num = (one_item > 0.5).sum().item()
-                zero_true_num = (zero_item < 0.5).sum().item()
-                print(format_str.format('one', one_true_num, one_item.size(0), one_true_num * 1.0 / one_item.size(0)))
-                print(one_item)
-                print(format_str.format('zero', zero_true_num, zero_item.size(0), zero_true_num * 1.0 / zero_item.size(0)))
-                print(zero_item)
-            except ZeroDivisionError:
-                print('Zero is divided!')
-        return loss
+        if self.training:
+            loss_relation = F.mse_loss(overlap_score, relation_gt)
+            return mask_logits_without_overlap, loss_relation
+        else:
+            return mask_logits_without_overlap, None
