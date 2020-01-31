@@ -18,8 +18,7 @@ from detectron2.evaluation import (
     verify_results
 )
 
-from .sognet import SOGNet
-
+from sognet import add_sognet_config
 
 class Trainer(DefaultTrainer):
 

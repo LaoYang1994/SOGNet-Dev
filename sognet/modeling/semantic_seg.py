@@ -122,14 +122,7 @@ class DeformConvFCNSubNet(nn.Module):
 class XDeformConvSemSegFPNHead(nn.Module):
 
     def __init__(self, cfg, input_shape: Dict[str, ShapeSpec]):
-        # self,
-        # cfg,
-        # in_channels,
-        # num_classes,
-        # num_layers,
-        # with_norm='none',
-        # with_roi_loss=False,
-        # upsample_rate=4):
+
         super(XDeformConvSemSegFPNHead, self).__init__()
 
         self.in_features      = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES

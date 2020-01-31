@@ -13,8 +13,8 @@ from detectron2.modeling.roi_heads import build_roi_heads
 from detectron2.modeling.meta_arch.build import META_ARCH_REGISTRY
 from detectron2.modeling.meta_arch.semantic_seg import build_sem_seg_head
 
-# from .relation import build_relation_head
-# from .panoptic import build_panoptic_head
+from .modeling import build_relation_head
+from .modeling import build_panoptic_head
 
 __all__ = ["SOGNet"]
 
@@ -45,8 +45,8 @@ class SOGNet(nn.Module):
         self.proposal_generator = build_proposal_generator(cfg, self.backbone.output_shape())
         self.roi_heads = build_roi_heads(cfg, self.backbone.output_shape())
         self.sem_seg_head = build_sem_seg_head(cfg, self.backbone.output_shape())
-        # self.relation_head = build_relation_head(cfg)
-        # self.panoptic_head = build_panoptic_head(cfg)
+        self.relation_head = build_relation_head(cfg)
+        self.panoptic_head = build_panoptic_head(cfg)
 
         pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
         pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
