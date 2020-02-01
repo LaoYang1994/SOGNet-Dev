@@ -1,7 +1,8 @@
 import os
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
-from detectron2.data.datasets import register_coco_panoptic_separated, _get_builtin_metadata
+from detectron2.data.datasets import register_coco_panoptic_separated
+from detectron2.data.datasets.builtin_meta import _get_builtin_metadata
 
 
 def get_sog_metadata():

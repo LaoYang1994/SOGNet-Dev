@@ -13,7 +13,8 @@ def build_panoptic_head(cfg):
 class PanopticHead(nn.Module):
 
     def __init__(self, cfg):
-        self.ignore_index        = cfg.SOGNET.PANOPTIC_HEAD.IGNORE_INDEX
+        super(PanopticHead, self).__init__()
+        self.ignore_index        = cfg.MODEL.SOGNET.PANOPTIC_HEAD.IGNORE_INDEX
         self.pan_loss            = nn.CrossEntropyLoss(ignore_index=self.ignore_index)
         sem_seg_num_classes      = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
         self.thing_num_classes   = cfg.MODEL.ROI_HEADS.NUM_CLASSES

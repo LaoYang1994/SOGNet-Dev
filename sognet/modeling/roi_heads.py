@@ -4,10 +4,11 @@ import torch.nn as nn
 
 from detectron2.layers import ShapeSpec
 
-from detectron2.modeling.roi_heads import ROI_HEADS_REGISTRY, ROIHeads
 from detectron2.modeling.poolers import ROIPooler
-from detectron2.modeling.roi_heads import build_box_head, build_mask_head
+from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
+        select_foreground_proposals, build_box_head, build_mask_head)
 from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers, FastRCNNOutputs
+from detectron2.modeling.roi_heads.mask_head import mask_rcnn_loss
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -89,8 +90,6 @@ class SOGROIHeads(ROIHeads):
         del images
         if self.training:
             proposals = self.label_and_sample_proposals(proposals, targets)
-            gt_proposals = None
-        del targets
 
         features_list = [features[f] for f in self.in_features]
 
@@ -99,8 +98,9 @@ class SOGROIHeads(ROIHeads):
             # During training the proposals used by the box head are
             # used by the mask, keypoint (and densepose) heads.
             losses.update(self._forward_mask(features_list, proposals))
-            gt_mask_logits = self.forward_for_feature_with_given_boxes(features_list, gt_proposals)
+            gt_mask_logits = self.forward_for_feature_with_given_boxes(features, targets)
 
+            del targets
             return gt_mask_logits, losses
         else:
             pred_instances = self._forward_box(features_list, proposals)

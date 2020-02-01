@@ -6,8 +6,8 @@ import torch
 from fvcore.common.file_io import PathManager
 from PIL import Image
 
-from . import detection_utils as utils
-from . import transforms as T
+from detectron2.data import detection_utils as utils
+from detectron2.data import transforms as T
 
 """
 This file contains the default mapping that's applied to "dataset dicts".

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from detectron2.layers.deform_conv import DeformConv
 from detectron2.layers.roi_align import ROIAlign
-from detectron2.layers.wrappers import Conv2d, ShapeSpec
+from detectron2.layers import Conv2d, ShapeSpec
 from detectron2.modeling.meta_arch.semantic_seg import SEM_SEG_HEADS_REGISTRY
 
 
@@ -23,7 +23,8 @@ class DeformConvWithOffset(nn.Module):
         dilation=1,
         groups=1,
         deformable_groups=1,
-        bias=True):
+        bias=False):
+        super(DeformConvWithOffset, self).__init__()
         
         self.conv_offset = nn.Conv2d(
             in_channels,
@@ -66,10 +67,10 @@ class DeformConvFCNSubNet(nn.Module):
         with_norm='none'):
         super(DeformConvFCNSubNet, self).__init__()
 
-        assert with_norm in ['none', 'group_norm']
+        assert with_norm in ['none', 'GN']
         assert num_layers >= 2
         self.num_layers = num_layers
-        if with_norm == 'group_norm':
+        if with_norm == 'GN':
             def group_norm(in_channel):
                 return nn.GroupNorm(32, in_channel)
             norm = group_norm
@@ -145,7 +146,7 @@ class XDeformConvSemSegFPNHead(nn.Module):
 
     def forward(self, features, targets=None):
         seg_feature_list = []
-        for i, f_name in self.in_features:
+        for i, f_name in enumerate(self.in_features):
             seg_feature = self.fcn_subnet(features[f_name])
             if i > 0:
                 seg_feature = F.interpolate(
@@ -153,18 +154,18 @@ class XDeformConvSemSegFPNHead(nn.Module):
             seg_feature_list.append(seg_feature)
         seg_features = torch.cat(seg_feature_list, dim=1)
 
-        sem_seg_logits = self.predictor(seg_features)
-        sem_seg_logits = F.interpolate(
-            sem_seg_logits, scale_factor=self.common_stride, mode="bilinear", align_corners=False)
+        sem_seg_scores = self.predictor(seg_features)
+        sem_seg_scores = F.interpolate(
+            sem_seg_scores, scale_factor=self.common_stride, mode="bilinear", align_corners=False)
 
         if self.training:
             assert targets is not None
             losses = {}
             losses["loss_sem_seg"] = (
                 F.cross_entropy(
-                    sem_seg_logits, targets, reduction="mean", ignore_index=self.ignore_value)
+                    sem_seg_scores, targets, reduction="mean", ignore_index=self.ignore_value)
                 * self.loss_weight
             )
-            return sem_seg_logits, losses
+            return None, losses
         else:
-            return sem_seg_logits, {}
+            return sem_seg_scores, {}

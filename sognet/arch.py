@@ -87,11 +87,8 @@ class SOGNet(nn.Module):
 
         # roi branch
         gt_mask_logits, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
-
         # semantic branch
         sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
-
-
         # relation branch
 
         # panoptic branch
