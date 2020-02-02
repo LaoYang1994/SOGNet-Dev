@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from detectron2.structures import Instances
+from .relation_head import build_relation_head
 
 def build_panoptic_head(cfg):
     return PanopticHead(cfg)
@@ -20,6 +21,7 @@ class PanopticHead(nn.Module):
         self.thing_num_classes   = cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.stuff_num_classes   = sem_seg_num_classes - self.thing_num_classes
         self.mask_size = 100
+        self.relation_process = build_relation_head(cfg)
 
     def forward_single(self,
                        stuff_logits,

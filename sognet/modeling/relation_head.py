@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from detectron2.layers import cat
+
 
 def build_relation_head(cfg):
     return RelationHead(cfg)
@@ -12,6 +14,7 @@ class RelationHead(nn.Module):
     def __init__(self, cfg):
         super(RelationHead, self).__init__()
 
+        self.device = torch.device(cfg.MODEL.DEVICE)
         self.thing_num_classes = cfg.MODEL.SOGNET.THING_NUM_CLASSES
         self.cls_embedding_dim = cfg.MODEL.SOGNET.RELATION.CLS_EMBEDDING_DIM
         self.pos_embedding_dim = cfg.MODEL.SOGNET.RELATION.POS_EMBEDDING_DIM
@@ -52,52 +55,89 @@ class RelationHead(nn.Module):
         dw = torch.log(w / w[:, None])
         dh = torch.log(h / h[:, None])
 
-        return torch.cat([dx[..., None], dy[..., None], dw[..., None], dh[..., None]], dim=2)
+        return torch.stack([dx, dy, dw, dh])
 
     def cls_relation(self, cls_idx):
-        assert ((cls_idx >= 1) & (cls_idx <= 80)).all()
         one_hot_embedding = F.one_hot(
-            cls_idx - 1, self.thing_num_classes - 1).float()
+            cls_idx, self.thing_num_classes).float()
 
         feat1 = self.U(one_hot_embedding)
         feat2 = self.V(one_hot_embedding)
 
         cls_relation = feat1[:, None, :] * feat2
 
-        return cls_relation
+        return cls_relation.permute(2, 0, 1).unsqueeze(0)
     
     def position_relation(self, bbox):
         bbox_relative_embedding = self.extract_position_matrix(bbox)
-        bbox_relative_embedding = bbox_relative_embedding.permute(
-            2, 0, 1).unsqueeze(0)
+        bbox_relative_embedding = bbox_relative_embedding.unsqueeze(0)
         bbox_relation = self.W(bbox_relative_embedding)
-        bbox_relation = bbox_relation.squeeze(0).permute(1, 2, 0)
+        bbox_relation = bbox_relation
 
         return bbox_relation
 
-    def forward(self, mask_logits, bbox, cls_idx, relation_gt=None):
-        device = mask_logits.device
-        num_things = cls_idx.size(0)
-        if num_things <= 1:
-            return mask_logits, torch.tensor([0]).to(mask.device)
+    def forward(self, mask_logits, instances):
+        # separate and fetch logits
+        mask_logits = self.separate_fetch_logits(mask_logits, instances)
+
+        mask_logits_without_overlap = []
+        loss_relations = []
+        for mask_logit, instance in zip(mask_logits, instances):
+            mask_logit, loss_relation = self.duplicate_removal(mask_logit, instance)
+            mask_logits_without_overlap.append(mask_logit)
+            loss_relations.append(loss_relation)
+
+        if self.training:
+            return mask_logits_without_overlap, torch.mean(loss_relations)
+        else:
+            return mask_logits_without_overlap, None
+
+    def duplicate_removal(self, mask_logit, instance):
+
+        num_things = len(instance)
+        if self.training:
+            bbox = instance.gt_boxes.tensor
+            cls_idx = instance.gt_classes
+            gt_relation = torch.ones((num_things, num_things))
+        else:
+            bbox = instance.pred_boxes
+            cls_idx = instance.pred_class
+
+        if num_things == 1:
+            return mask_logit, torch.tensor([0]).to(self.device)
 
         cls_relation = self.cls_relation(cls_idx)
         pos_relation = self.position_relation(bbox)
 
-        relation_feat = torch.cat([cls_relation, pos_relation], dim=2)
-        relation_embedding = self.P(relation_feat.permute(2, 0, 1)).unsqueeze(0)
+        relation_feat = torch.cat([cls_relation, pos_relation], dim=1)
+        relation_embedding = self.P(relation_feat)
         overlap_score = torch.sigmoid(relation_embedding).squeeze(0).squeeze(0)
         relation_score = F.relu(overlap_score - overlap_score.transpose(0, 1), inplace=True)
 
         # post process
-        mask_prob = torch.sigmoid(mask_logits)
-        overlap_part = (mask_logits * mask_prob)[:, :, None, ...] * mask_prob
+        mask_prob = torch.sigmoid(mask_logit)
+        overlap_part = (mask_logit * mask_prob)[:, :, None, ...] * mask_prob
         overlap_part = overlap_part * relation_score[..., None, None]
         overlap_part = overlap_part.sum(dim=2)
-        mask_logits_without_overlap = mask_logits - overlap_part
+        mask_logit_without_overlap = mask_logit - overlap_part
 
         if self.training:
-            loss_relation = F.mse_loss(overlap_score, relation_gt)
-            return mask_logits_without_overlap, loss_relation
+            loss_relation = F.mse_loss(overlap_score, gt_relation)
+            return mask_logit_without_overlap, loss_relation
         else:
-            return mask_logits_without_overlap, None
+            return mask_logit_without_overlap, None
+
+    def separate_fetch_logits(self, logits, instances):
+        # fetch the logits of the corresponding class
+        mask_size = logits.size(-1)
+        cls_idx = cat([x.gt_classes for x in instances])
+        logits = logits.gather(1,
+                cls_idx.view(-1, 1, 1, 1).expand(-1, -1, mask_size, mask_size)).squeeze(1) # n*28*28
+
+        if len(instances) == 1:
+            return [logits]
+
+        num_instances = [len(x) for x in instances]
+        logits_by_img = torch.split(logits, num_instances, dim=0)
+
+        return logits_by_img

@@ -13,7 +13,6 @@ from detectron2.modeling.roi_heads import build_roi_heads
 from detectron2.modeling.meta_arch.build import META_ARCH_REGISTRY
 from detectron2.modeling.meta_arch.semantic_seg import build_sem_seg_head
 
-from .modeling import build_relation_head
 from .modeling import build_panoptic_head
 
 __all__ = ["SOGNet"]
@@ -45,7 +44,6 @@ class SOGNet(nn.Module):
         self.proposal_generator = build_proposal_generator(cfg, self.backbone.output_shape())
         self.roi_heads = build_roi_heads(cfg, self.backbone.output_shape())
         self.sem_seg_head = build_sem_seg_head(cfg, self.backbone.output_shape())
-        self.relation_head = build_relation_head(cfg)
         self.panoptic_head = build_panoptic_head(cfg)
 
         pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
@@ -54,13 +52,15 @@ class SOGNet(nn.Module):
         self.to(self.device)
 
     def forward(self, batched_inputs):
-
         # inference
         if not self.training:
             return self.inference(batched_inputs)
 
         # pre-process
         images = self.preprocess_image(batched_inputs)
+        # main part
+        features = self.backbone(images.tensor)
+
         if "instances" in batched_inputs[0]:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
         else:
@@ -74,8 +74,10 @@ class SOGNet(nn.Module):
         else:
             gt_sem_seg = None
 
-        # main part
-        features = self.backbone(images.tensor)
+        if "panoptic" in batched_inputs[0]:
+            gt_panoptics = None
+        else:
+            gt_panoptics = None
 
         # proposal branch
         if self.proposal_generator:
@@ -89,12 +91,14 @@ class SOGNet(nn.Module):
         gt_mask_logits, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
         # semantic branch
         sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
-        # relation branch
-
         # panoptic branch
+        _, relation_losses, panoptic_losses = self.panoptic_head(
+                gt_mask_logits, sem_seg_logits, gt_instances)
 
         # loss
         losses = {}
+        losses.update(panoptic_losses)
+        losses.update(relation_losses)
         losses.update(sem_seg_losses)
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
         losses.update(proposal_losses)
