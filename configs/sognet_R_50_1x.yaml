@@ -1,6 +1,6 @@
 MODEL:
   META_ARCHITECTURE: "SOGNet"
-  MASK_ON: False
+  MASK_ON: True
   BACKBONE:
     NAME: "build_resnet_fpn_backbone"
   RESNETS:
