@@ -76,23 +76,7 @@ class RelationHead(nn.Module):
 
         return bbox_relation
 
-    def forward(self, mask_logits, instances):
-        # separate and fetch logits
-        mask_logits = self.separate_fetch_logits(mask_logits, instances)
-
-        mask_logits_without_overlap = []
-        loss_relations = []
-        for mask_logit, instance in zip(mask_logits, instances):
-            mask_logit, loss_relation = self.duplicate_removal(mask_logit, instance)
-            mask_logits_without_overlap.append(mask_logit)
-            loss_relations.append(loss_relation)
-
-        if self.training:
-            return mask_logits_without_overlap, torch.mean(loss_relations)
-        else:
-            return mask_logits_without_overlap, None
-
-    def duplicate_removal(self, mask_logit, instance):
+    def forward(self, mask_logit, instance):
 
         num_things = len(instance)
         if self.training:
@@ -100,8 +84,8 @@ class RelationHead(nn.Module):
             cls_idx = instance.gt_classes
             gt_relation = torch.ones((num_things, num_things))
         else:
-            bbox = instance.pred_boxes
-            cls_idx = instance.pred_class
+            bbox = None
+            cls_idx = None
 
         if num_things == 1:
             return mask_logit, torch.tensor([0]).to(self.device)
@@ -127,17 +111,3 @@ class RelationHead(nn.Module):
         else:
             return mask_logit_without_overlap, None
 
-    def separate_fetch_logits(self, logits, instances):
-        # fetch the logits of the corresponding class
-        mask_size = logits.size(-1)
-        cls_idx = cat([x.gt_classes for x in instances])
-        logits = logits.gather(1,
-                cls_idx.view(-1, 1, 1, 1).expand(-1, -1, mask_size, mask_size)).squeeze(1) # n*28*28
-
-        if len(instances) == 1:
-            return [logits]
-
-        num_instances = [len(x) for x in instances]
-        logits_by_img = torch.split(logits, num_instances, dim=0)
-
-        return logits_by_img
