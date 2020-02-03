@@ -1,7 +1,10 @@
 import torch
 
 
-def multi_pply(func, *args, **kwargs):
+__all__ = ["multi_apply", "split"]
+
+
+def multi_apply(func, *args, **kwargs):
     pfunc = partial(func, **kwargs) if kwargs else func
     map_results = map(pfunc, *args)
     return tuple(map(list, zip(*map_results)))

@@ -93,7 +93,7 @@ class SOGNet(nn.Module):
         sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
         # panoptic branch
         _, relation_losses, panoptic_losses = self.panoptic_head(
-                gt_mask_logits, sem_seg_logits, gt_instances)
+                gt_mask_logits, sem_seg_logits, gt_instances, gt_sem_seg)
 
         # loss
         losses = {}

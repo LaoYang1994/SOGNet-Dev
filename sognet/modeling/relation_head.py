@@ -69,8 +69,10 @@ class RelationHead(nn.Module):
         return cls_relation.permute(2, 0, 1).unsqueeze(0)
     
     def position_relation(self, bbox):
+        print(bbox)
         bbox_relative_embedding = self.extract_position_matrix(bbox)
         bbox_relative_embedding = bbox_relative_embedding.unsqueeze(0)
+        print(bbox_relative_embedding.size())
         bbox_relation = self.W(bbox_relative_embedding)
         bbox_relation = bbox_relation
 
@@ -82,13 +84,13 @@ class RelationHead(nn.Module):
         if self.training:
             bbox = instance.gt_boxes.tensor
             cls_idx = instance.gt_classes
-            gt_relation = torch.ones((num_things, num_things))
+            gt_relation = torch.ones((num_things, num_things)).to(self.device)
         else:
             bbox = None
             cls_idx = None
 
         if num_things == 1:
-            return mask_logit, torch.tensor([0]).to(self.device)
+            return mask_logit, torch.zeros(1, device=self.device)
 
         cls_relation = self.cls_relation(cls_idx)
         pos_relation = self.position_relation(bbox)

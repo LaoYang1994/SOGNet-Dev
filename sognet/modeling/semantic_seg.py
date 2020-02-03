@@ -166,6 +166,6 @@ class XDeformConvSemSegFPNHead(nn.Module):
                     sem_seg_scores, targets, reduction="mean", ignore_index=self.ignore_value)
                 * self.loss_weight
             )
-            return None, losses
+            return sem_seg_scores, losses
         else:
             return sem_seg_scores, {}
