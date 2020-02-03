@@ -60,12 +60,12 @@ class Trainer(DefaultTrainer):
         return DatasetEvaluators(evaluator_list)
 
     @classmethod
-    def build_train_loader(cls, cfg, dataset_name):
-        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
+    def build_test_loader(cls, cfg, dataset_name):
+        return build_detection_test_loader(cfg, dataset_name, mapper=SOGDatasetMapper(cfg, False))
 
     @classmethod
-    def build_test_loader(cls, cfg):
-        return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, True))
+    def build_train_loader(cls, cfg):
+        return build_detection_train_loader(cfg, mapper=SOGDatasetMapper(cfg, True))
 
 def setup(args):
     """

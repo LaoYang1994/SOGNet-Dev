@@ -1,8 +1,9 @@
 import os
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
-from detectron2.data.datasets import load_coco_json, load_sem_seg, merge_to_panoptic
+from detectron2.data.datasets import load_coco_json, load_sem_seg
 from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES
+from detectron2.data.datasets.register_coco import merge_to_panoptic
 
 
 def get_sog_metadata():
@@ -45,6 +46,28 @@ def get_sog_metadata():
     ret.update(thing_ret)
     return ret
 
+
+def register_coco_panoptic_sog(
+    name, metadata, image_root, panoptic_root, panoptic_json, sem_seg_root, instances_json
+):
+    DatasetCatalog.register(
+        name,
+        lambda: merge_to_panoptic(
+            load_coco_json(instances_json, image_root, name),
+            load_sem_seg(sem_seg_root, image_root),
+        ),
+    )
+    MetadataCatalog.get(name).set(
+        panoptic_root=panoptic_root,
+        image_root=image_root,
+        panoptic_json=panoptic_json,
+        sem_seg_root=sem_seg_root,
+        json_file=instances_json,  # TODO rename
+        evaluator_type="coco_panoptic_seg",
+        **metadata
+    )
+
+
 _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
     "coco_2017_train_panoptic_sog": (
         "coco/panoptic_train2017",
@@ -76,23 +99,3 @@ for (
         instances_json,
     )
 
-
-def register_coco_panoptic_sog(
-    name, metadata, image_root, panoptic_root, panoptic_json, sem_seg_root, instances_json
-):
-    DatasetCatalog.register(
-        name,
-        lambda: merge_to_panoptic(
-            load_coco_json(instances_json, image_root, name),
-            load_sem_seg(sem_seg_root, image_root),
-        ),
-    )
-    MetadataCatalog.get(name).set(
-        panoptic_root=panoptic_root,
-        image_root=image_root,
-        panoptic_json=panoptic_json,
-        sem_seg_root=sem_seg_root,
-        json_file=instances_json,  # TODO rename
-        evaluator_type="coco_panoptic_seg",
-        **metadata
-    )
