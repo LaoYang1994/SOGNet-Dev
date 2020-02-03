@@ -1,10 +1,23 @@
 import os
+import copy
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.data.datasets import load_coco_json, load_sem_seg
 from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES
-from detectron2.data.datasets.register_coco import merge_to_panoptic
 
+
+def merge_to_panoptic_sog(detection_dicts, sem_seg_dicts, pan_dicts):
+    results = []
+    sem_seg_file_to_entry = {x["file_name"]: x for x in sem_seg_dicts}
+    pan_file_to_entry = {x["file_name"]: x for x in pan_dicts}
+    assert len(sem_seg_file_to_entry) > 0
+
+    for det_dict in detection_dicts:
+        dic = copy.copy(det_dict)
+        dic.update(sem_seg_file_to_entry[dic["file_name"]])
+        dic.update(pan_file_to_entry[dic["file_name"]])
+        results.append(dic)
+    return results
 
 def get_sog_metadata():
     thing_ids = [k["id"] for k in COCO_CATEGORIES if k["isthing"] == 1]
@@ -47,55 +60,52 @@ def get_sog_metadata():
     return ret
 
 
-def register_coco_panoptic_sog(
-    name, metadata, image_root, panoptic_root, panoptic_json, sem_seg_root, instances_json
-):
+_PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
+    "coco_2017_train_panoptic_sog": (
+        "coco/train2017",
+        # generate by running the scripts in datasets
+        "coco/annotations/instances_sog_train2017.json",
+        "coco/panoptic_train2017",
+        "coco/annotations/panoptic_train2017.json",
+        "coco/panoptic_all_cat_train2017",
+        ["pan_id"],
+    ),
+    "coco_2017_val_panoptic_sog": (
+        "coco/val2017",
+        "coco/annotations/instances_sog_val2017.json",
+        "coco/panoptic_val2017",
+        "coco/annotations/panoptic_val2017.json",
+        "coco/panoptic_all_cat_val2017",
+        [],
+    )
+}
+
+
+for (
+    prefix, (image_root, instances_json, panoptic_root, panoptic_json, semantic_root, extra_keys),
+) in _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG.items():
+
+    sog_metadata   = get_sog_metadata()
+    image_root     = os.path.join("datasets", image_root)
+    instances_json = os.path.join("datasets", instances_json)
+    panoptic_root  = os.path.join("datasets", panoptic_root)
+    panoptic_json  = os.path.join("datasets", panoptic_json)
+    sem_seg_root   = os.path.join("datasets", semantic_root)
+
     DatasetCatalog.register(
-        name,
-        lambda: merge_to_panoptic(
-            load_coco_json(instances_json, image_root, name),
+        prefix,
+        lambda: merge_to_panoptic_sog(
+            load_coco_json(instances_json, image_root, prefix, extra_keys),
             load_sem_seg(sem_seg_root, image_root),
+            {}
         ),
     )
-    MetadataCatalog.get(name).set(
+    MetadataCatalog.get(prefix).set(
         panoptic_root=panoptic_root,
         image_root=image_root,
         panoptic_json=panoptic_json,
         sem_seg_root=sem_seg_root,
         json_file=instances_json,  # TODO rename
         evaluator_type="coco_panoptic_seg",
-        **metadata
+        **sog_metadata
     )
-
-
-_PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
-    "coco_2017_train_panoptic_sog": (
-        "coco/panoptic_train2017",
-        "coco/annotations/panoptic_train2017.json",
-        "coco/panoptic_all_cat_train2017",
-    ),
-    "coco_2017_val_panoptic_sog": (
-        "coco/panoptic_val2017",
-        "coco/annotations/panoptic_val2017.json",
-        "coco/panoptic_all_cat_val2017",
-    )
-}
-
-
-for (
-    prefix,
-    (panoptic_root, panoptic_json, semantic_root),
-) in _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG.items():
-    prefix_instances = prefix[: -len("_panoptic_sog")]
-    instances_meta = MetadataCatalog.get(prefix_instances)
-    image_root, instances_json = instances_meta.image_root, instances_meta.json_file
-    register_coco_panoptic_sog(
-        prefix,
-        get_sog_metadata(),
-        image_root,
-        os.path.join("datasets", panoptic_root),
-        os.path.join("datasets", panoptic_json),
-        os.path.join("datasets", semantic_root),
-        instances_json,
-    )
-
