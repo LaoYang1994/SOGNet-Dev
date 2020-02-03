@@ -69,10 +69,8 @@ class RelationHead(nn.Module):
         return cls_relation.permute(2, 0, 1).unsqueeze(0)
     
     def position_relation(self, bbox):
-        print(bbox)
         bbox_relative_embedding = self.extract_position_matrix(bbox)
         bbox_relative_embedding = bbox_relative_embedding.unsqueeze(0)
-        print(bbox_relative_embedding.size())
         bbox_relation = self.W(bbox_relative_embedding)
         bbox_relation = bbox_relation
 
