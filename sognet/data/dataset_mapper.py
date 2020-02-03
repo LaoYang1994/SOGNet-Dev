@@ -13,10 +13,10 @@ from detectron2.data import transforms as T
 This file contains the default mapping that's applied to "dataset dicts".
 """
 
-__all__ = ["DatasetMapper"]
+__all__ = ["SOGDatasetMapper"]
 
 
-class DatasetMapper:
+class SOGDatasetMapper:
     """
     A callable which takes a dataset dict in Detectron2 Dataset format,
     and map it into a format used by the model.

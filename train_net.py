@@ -19,7 +19,7 @@ from detectron2.evaluation import (
     verify_results
 )
 
-from sognet import add_sognet_config, DatasetMapper
+from sognet import add_sognet_config, SOGDatasetMapper
 
 class Trainer(DefaultTrainer):
 
