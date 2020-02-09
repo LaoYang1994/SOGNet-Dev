@@ -76,19 +76,23 @@ class RelationHead(nn.Module):
 
         return bbox_relation
 
-    def forward(self, mask_logit, instance):
+    def forward(self, mask_logit, instance, gt_relation=None):
 
-        num_things = len(instance)
-        if self.training:
-            bbox = instance.gt_boxes.tensor
-            cls_idx = instance.gt_classes
-            gt_relation = torch.ones((num_things, num_things)).to(self.device)
-        else:
-            bbox = None
-            cls_idx = None
+        if not self.training:
+            return self.inference(mask_logit, instance)
 
-        if num_things == 1:
+        assert gt_relation is not None
+        relation_num = gt_relation.size(0)
+
+        if relation_num < 2:
             return mask_logit, torch.zeros(1, device=self.device)
+
+        assert relation_num <= len(instance)
+
+        mask_logit, sep_mask_logit = torch.split(
+                mask_logit, [relation_num, len(instance)-relation_num], dim=1)
+        bbox = instance.gt_boxes.tensor[:relation_num]
+        cls_idx = instance.gt_classes[:relation_num]
 
         cls_relation = self.cls_relation(cls_idx)
         pos_relation = self.position_relation(bbox)
@@ -104,10 +108,12 @@ class RelationHead(nn.Module):
         overlap_part = overlap_part * relation_score[..., None, None]
         overlap_part = overlap_part.sum(dim=2)
         mask_logit_without_overlap = mask_logit - overlap_part
+        mask_logit_without_overlap = torch.cat([mask_logit_without_overlap, sep_mask_logit], dim=1)
 
-        if self.training:
-            loss_relation = F.mse_loss(overlap_score, gt_relation)
-            return mask_logit_without_overlap, loss_relation
-        else:
-            return mask_logit_without_overlap, None
+        loss_relation = F.mse_loss(overlap_score, gt_relation)
+
+        return mask_logit_without_overlap, loss_relation
+
+    def inference(self, mask_logit, instance):
+        pass
 

@@ -8,7 +8,7 @@ from detectron2.structures import Instances
 from detectron2.layers import cat
 
 from .relation_head import build_relation_head
-from ..utils import multi_apply, split
+from ..utils import multi_apply
 
 
 def build_panoptic_head(cfg):
@@ -35,7 +35,7 @@ class PanopticHead(nn.Module):
         if self.relation_on:
             self.relation_process = build_relation_head(cfg)
 
-    def forward(self, mask_logits, sem_seg_logits, instances, gt_panoptics=None):
+    def forward(self, mask_logits, sem_seg_logits, instances, gt_relations=None, gt_panoptics=None):
         """
         sem_seg_logits: B x C x H x W
         mask_logits: N x C x M x M
@@ -44,7 +44,7 @@ class PanopticHead(nn.Module):
         mask_logits = self._separate_fetch_logits(mask_logits, instances)
 
         # split sem seg logits
-        stuff_logits, thing_logits = split(
+        stuff_logits, thing_logits = torch.split(
             sem_seg_logits, [self.stuff_num_classes, self.thing_num_classes], dim=1)
 
         if self.training:
@@ -54,6 +54,7 @@ class PanopticHead(nn.Module):
                     stuff_logits,
                     thing_logits,
                     instances,
+                    gt_relations,
                     gt_panoptics)
             relation_losses = torch.tensor(relation_losses).mean().to(self.device)
             loss_relation = {"loss_relation": relation_losses}
@@ -69,14 +70,17 @@ class PanopticHead(nn.Module):
                     instances)
             return pan_logits, None, None
 
-    def forward_single(self, mask_logit, stuff_logit, thing_logit, instance, gt_panoptic=None):
+    def forward_single(self, mask_logit, stuff_logit, thing_logit, instance,
+            gt_relation=None, gt_panoptic=None):
+        assert self.training and gt_relation is not None and gt_panoptic is not None
         h, w = stuff_logit.size()[-2:]
 
         thing_mask_logit = self._unmap_mask_logit_single(mask_logit, instance, (h, w))
 
         # relation module
         if self.relation_on:
-            thing_mask_logit, relation_loss = self.relation_process(thing_mask_logit, instance)
+            thing_mask_logit, relation_loss = self.relation_process(
+                    thing_mask_logit, instance, gt_relation)
 
         thing_sem_logit = self._crop_thing_logit_single(thing_logit, instance)
         thing_logit = thing_mask_logit + thing_sem_logit
@@ -160,5 +164,5 @@ class PanopticHead(nn.Module):
         logits = logits.gather(1,
                cls_idx.view(-1, 1, 1, 1).expand(-1, -1, self.mask_size, self.mask_size)).squeeze(1)
 
-        return split(logits, ins_num_list)
+        return torch.split(logits, ins_num_list)
 

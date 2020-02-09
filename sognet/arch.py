@@ -74,10 +74,19 @@ class SOGNet(nn.Module):
         else:
             gt_sem_seg = None
 
-        if "panoptic" in batched_inputs[0]:
-            gt_panoptics = None
+        if "relation" in batched_inputs[0]:
+            gt_relations = [x["relation"].to(self.device) for x in batched_inputs]
         else:
-            gt_panoptics = None
+            gt_relations = None
+
+        if "pan_seg" in batched_inputs[0]:
+            gt_pan_seg = [x["pan_seg"].to(self.device) for x in batched_inputs]
+            gt_pan_seg = ImageList.from_tensors(
+                gt_pan_seg, self.backbone.size_divisibility, self.panoptic_head.ignore_index
+            ).tensor
+
+        else:
+            gt_pan_seg = None
 
         # proposal branch
         if self.proposal_generator:
@@ -93,15 +102,15 @@ class SOGNet(nn.Module):
         sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
         # panoptic branch
         _, relation_losses, panoptic_losses = self.panoptic_head(
-                gt_mask_logits, sem_seg_logits, gt_instances, gt_sem_seg)
+                gt_mask_logits, sem_seg_logits, gt_instances, gt_relations, gt_pan_seg)
 
         # loss
         losses = {}
-        losses.update(panoptic_losses)
-        losses.update(relation_losses)
         losses.update(sem_seg_losses)
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
-        losses.update(proposal_losses)
+        losses.update(panoptic_losses)
+        losses.update(relation_losses)
+
         return losses
 
     
