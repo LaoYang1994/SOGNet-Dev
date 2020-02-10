@@ -31,6 +31,9 @@ class SOGNet(nn.Module):
 
         # loss weight
         self.instance_loss_weight = cfg.MODEL.SOGNET.INSTANCE_LOSS_WEIGHT
+        self.sem_seg_loss_weight = cfg.MODEL.SOGNET.SEM_SEG_LOSS_WEIGHT
+        self.relation_loss_weight = cfg.MODEL.SOGNET.RELATION_LOSS_WEIGHT
+        self.panoptic_loss_weight = cfg.MODEL.SOGNET.PANOPTIC_LOSS_WEIGHT
 
         # options when combining instance & semantic outputs
         self.combine_on = cfg.MODEL.SOGNET.COMBINE.ENABLED
@@ -106,10 +109,11 @@ class SOGNet(nn.Module):
 
         # loss
         losses = {}
-        losses.update(sem_seg_losses)
+        losses.update(proposal_losses)
+        losses.update({k: v * self.sem_seg_loss_weight for k, v in sem_seg_losses.items()})
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
-        losses.update(panoptic_losses)
-        losses.update(relation_losses)
+        losses.update({k: v * self.relation_loss_weight for k, v in relation_losses.items()})
+        losses.update({k: v * self.panoptic_loss_weight for k, v in panoptic_losses.items()})
 
         return losses
 

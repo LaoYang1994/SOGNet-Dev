@@ -15,7 +15,7 @@ class RelationHead(nn.Module):
         super(RelationHead, self).__init__()
 
         self.device = torch.device(cfg.MODEL.DEVICE)
-        self.thing_num_classes = cfg.MODEL.SOGNET.THING_NUM_CLASSES
+        self.thing_num_classes = cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.cls_embedding_dim = cfg.MODEL.SOGNET.RELATION.CLS_EMBEDDING_DIM
         self.pos_embedding_dim = cfg.MODEL.SOGNET.RELATION.POS_EMBEDDING_DIM
         self.relation_embedding_dim = self.cls_embedding_dim + self.pos_embedding_dim
@@ -83,6 +83,7 @@ class RelationHead(nn.Module):
 
         assert gt_relation is not None
         relation_num = gt_relation.size(0)
+        print(len(instance), relation_num)
 
         if relation_num < 2:
             return mask_logit, torch.zeros(1, device=self.device)

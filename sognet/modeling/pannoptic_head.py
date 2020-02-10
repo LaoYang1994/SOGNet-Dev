@@ -22,7 +22,7 @@ class PanopticHead(nn.Module):
 
         self.device = torch.device(cfg.MODEL.DEVICE)
 
-        self.ignore_index        = cfg.MODEL.SOGNET.PANOPTIC_HEAD.IGNORE_INDEX
+        self.ignore_index        = cfg.MODEL.SOGNET.PANOPTIC.IGNORE_INDEX
         self.panoptic_loss       = nn.CrossEntropyLoss(ignore_index=self.ignore_index)
         sem_seg_num_classes      = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
         self.thing_num_classes   = cfg.MODEL.ROI_HEADS.NUM_CLASSES
