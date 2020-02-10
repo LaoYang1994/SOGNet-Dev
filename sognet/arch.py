@@ -48,6 +48,7 @@ class SOGNet(nn.Module):
         self.roi_heads = build_roi_heads(cfg, self.backbone.output_shape())
         self.sem_seg_head = build_sem_seg_head(cfg, self.backbone.output_shape())
         self.panoptic_head = build_panoptic_head(cfg)
+        self.relation_enable = cfg.MODEL.SOGNET.RELATION.ENABLED
 
         pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
         pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
@@ -77,7 +78,7 @@ class SOGNet(nn.Module):
         else:
             gt_sem_seg = None
 
-        if "relation" in batched_inputs[0]:
+        if self.relation_enable and "relation" in batched_inputs[0]:
             gt_relations = [x["relation"].to(self.device) for x in batched_inputs]
         else:
             gt_relations = None
@@ -95,9 +96,7 @@ class SOGNet(nn.Module):
         if self.proposal_generator:
             proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
         else:
-            assert "proposals" in batched_inputs[0]
-            proposals = [x["proposals"].to(self.device) for x in batched_inputs]
-            proposal_losses = {}
+            raise NotImplementedError
 
         # roi branch
         gt_mask_logits, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
@@ -112,8 +111,9 @@ class SOGNet(nn.Module):
         losses.update(proposal_losses)
         losses.update({k: v * self.sem_seg_loss_weight for k, v in sem_seg_losses.items()})
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
-        losses.update({k: v * self.relation_loss_weight for k, v in relation_losses.items()})
         losses.update({k: v * self.panoptic_loss_weight for k, v in panoptic_losses.items()})
+        if self.relation_enable:
+            losses.update({k: v * self.relation_loss_weight for k, v in relation_losses.items()})
 
         return losses
 

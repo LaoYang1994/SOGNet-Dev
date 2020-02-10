@@ -48,6 +48,8 @@ class PanopticHead(nn.Module):
             sem_seg_logits, [self.stuff_num_classes, self.thing_num_classes], dim=1)
 
         if self.training:
+            if gt_relations is None:
+                gt_relations = [None] * len(instances)
             _, relation_losses, pan_losses = multi_apply(
                     self.forward_single,
                     mask_logits,
@@ -56,8 +58,11 @@ class PanopticHead(nn.Module):
                     instances,
                     gt_relations,
                     gt_panoptics)
-            relation_losses = torch.tensor(relation_losses).mean().to(self.device)
-            loss_relation = {"loss_relation": relation_losses}
+            if self.relation_on:
+                relation_losses = torch.tensor(relation_losses).mean().to(self.device)
+                loss_relation = {"loss_relation": relation_losses}
+            else:
+                loss_relation = None
             pan_losses = torch.tensor(pan_losses).mean().to(self.device)
             loss_panoptic = {"loss_panoptic": pan_losses}
             return None, loss_relation, loss_panoptic
@@ -72,7 +77,6 @@ class PanopticHead(nn.Module):
 
     def forward_single(self, mask_logit, stuff_logit, thing_logit, instance,
             gt_relation=None, gt_panoptic=None):
-        assert self.training and gt_relation is not None and gt_panoptic is not None
         h, w = stuff_logit.size()[-2:]
 
         thing_mask_logit = self._unmap_mask_logit_single(mask_logit, instance, (h, w))
@@ -81,6 +85,8 @@ class PanopticHead(nn.Module):
         if self.relation_on:
             thing_mask_logit, relation_loss = self.relation_process(
                     thing_mask_logit, instance, gt_relation)
+        else:
+            relation_loss = None
 
         thing_sem_logit = self._crop_thing_logit_single(thing_logit, instance)
         thing_logit = thing_mask_logit + thing_sem_logit
