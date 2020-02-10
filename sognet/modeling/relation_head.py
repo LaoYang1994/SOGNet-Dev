@@ -83,7 +83,6 @@ class RelationHead(nn.Module):
 
         assert gt_relation is not None
         relation_num = gt_relation.size(0)
-        print(len(instance), relation_num)
 
         if relation_num < 2:
             return mask_logit, torch.zeros(1, device=self.device)
@@ -116,5 +115,24 @@ class RelationHead(nn.Module):
         return mask_logit_without_overlap, loss_relation
 
     def inference(self, mask_logit, instance):
-        pass
+        bbox = instance.gt_boxes.tensor
+        cls_idx = instance.gt_classes
+
+        cls_relation = self.cls_relation(cls_idx)
+        pos_relation = self.position_relation(bbox)
+
+        relation_feat = torch.cat([cls_relation, pos_relation], dim=1)
+        relation_embedding = self.P(relation_feat)
+        overlap_score = torch.sigmoid(relation_embedding).squeeze(0).squeeze(0)
+        relation_score = F.relu(overlap_score - overlap_score.transpose(0, 1), inplace=True)
+
+        # post process
+        mask_prob = torch.sigmoid(mask_logit)
+        overlap_part = (mask_logit * mask_prob)[:, :, None, ...] * mask_prob
+        overlap_part = overlap_part * relation_score[..., None, None]
+        overlap_part = overlap_part.sum(dim=2)
+        mask_logit_without_overlap = mask_logit - overlap_part
+        mask_logit_without_overlap = torch.cat([mask_logit_without_overlap, sep_mask_logit], dim=1)
+
+        return mask_logit_without_overlap, None
 
