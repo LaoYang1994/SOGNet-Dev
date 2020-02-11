@@ -64,6 +64,8 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
 
 
 def get_relation_gt(instances, sample_num=-1):
+    if len(instances) <= 1:
+        return instances, torch.zeros((1, 1))
     gt_masks = instances.bit_masks.tensor
 
     num_ins = gt_masks.size(0)
@@ -81,7 +83,7 @@ def get_relation_gt(instances, sample_num=-1):
         if sample_num == -1:
             sample_num = (indicator > 0).sum()
         if sample_num == 0:
-            return instances, -1 * torch.ones((1, 1))
+            return instances, torch.zeros((1, 1))
         order = (-indicator).argsort()
         relation_mat = relation_mat[order][:, order][ :sample_num, :sample_num]
         instances = instances[order]
