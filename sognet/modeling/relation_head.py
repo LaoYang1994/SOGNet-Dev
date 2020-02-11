@@ -84,11 +84,11 @@ class RelationHead(nn.Module):
         assert gt_relation is not None
         relation_num = gt_relation.size(0)
 
-        assert relation_num <= len(instance)
+        assert len(instance) == 0 or relation_num <= len(instance)
 
-        if relation_num < 2:
-            bbox = torch.tensor([[0.0, 0.0, 1.0, 1.0]]).to(self.device)
+        if relation_num == 1:
             cls_idx = torch.arange(1).to(self.device).type_as(instance.gt_classes)
+            bbox = torch.tensor([[0.0, 0.0, 1.0, 1.0]]).to(self.device)
             relation_score = self.relation_predict(cls_idx, bbox)
             mask_logit_wo_overlap = mask_logit
         else:

@@ -8,7 +8,7 @@ from detectron2.structures import Instances
 from detectron2.layers import cat
 
 from .relation_head import build_relation_head
-from ..utils import multi_apply
+from ..utils import multi_apply, reduce_loss
 
 
 def build_panoptic_head(cfg):
@@ -64,7 +64,7 @@ class PanopticHead(nn.Module):
                         gt_panoptics,
                         gt_relations)
 
-                relation_losses = torch.tensor(relation_losses).mean().to(self.device)
+                relation_losses = reduce_loss(relation_losses, reduction="mean")
                 losses.update({"loss_relation": relation_losses * self.relation_loss_weight})
             else:
                 _, _, pan_losses = multi_apply(
@@ -75,7 +75,7 @@ class PanopticHead(nn.Module):
                         instances,
                         gt_panoptics)
 
-            pan_losses = torch.tensor(pan_losses).mean().to(self.device)
+            pan_losses = reduce_loss(pan_losses, reduction="mean")
             losses.update({"loss_panoptic": pan_losses * self.pan_loss_weight})
             return None, losses
         else:
