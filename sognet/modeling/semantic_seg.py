@@ -127,7 +127,6 @@ class XDeformConvSemSegFPNHead(nn.Module):
         super(XDeformConvSemSegFPNHead, self).__init__()
 
         self.in_features      = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES
-        feature_strides       = {k: v.stride for k, v in input_shape.items()}
         feature_channels      = {k: v.channels for k, v in input_shape.items()}
         self.ignore_value     = cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE
         num_classes           = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
@@ -141,8 +140,12 @@ class XDeformConvSemSegFPNHead(nn.Module):
             feature_channels[self.in_features[0]], conv_dims, num_layers, with_norm=norm)
 
         self.predictor = nn.Conv2d(
-            len(self.in_features) * conv_dims, num_classes,kernel_size=3, stride=1, padding=1)
-        weight_init.c2_msra_fill(self.predictor)
+            len(self.in_features) * conv_dims, num_classes,kernel_size=1, stride=1, padding=0)
+        self._weight_init()
+
+    def _weight_init(self):
+        nn.init.normal_(self.predictor.weight.data, 0, 0.01)
+        self.predictor.bias.data.zero_()
 
     def forward(self, features, targets=None):
         seg_feature_list = []
@@ -155,17 +158,19 @@ class XDeformConvSemSegFPNHead(nn.Module):
         seg_features = torch.cat(seg_feature_list, dim=1)
 
         sem_seg_scores = self.predictor(seg_features)
-        sem_seg_scores = F.interpolate(
-            sem_seg_scores, scale_factor=self.common_stride, mode="bilinear", align_corners=False)
+        sem_seg_scores_init_size = F.interpolate(
+                sem_seg_scores, scale_factor=self.common_stride,
+                mode="bilinear", align_corners=False)
 
         if self.training:
             assert targets is not None
             losses = {}
             losses["loss_sem_seg"] = (
                 F.cross_entropy(
-                    sem_seg_scores, targets, reduction="mean", ignore_index=self.ignore_value)
+                    sem_seg_scores_init_size, targets,
+                    reduction="mean", ignore_index=self.ignore_value)
                 * self.loss_weight
             )
             return sem_seg_scores, losses
         else:
-            return sem_seg_scores, {}
+            return sem_seg_scores_init_size, {}

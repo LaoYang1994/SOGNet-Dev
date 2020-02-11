@@ -32,9 +32,10 @@ class SOGDatasetMapper:
         # fmt: off
         self.img_format     = cfg.INPUT.FORMAT
         self.mask_format    = cfg.INPUT.MASK_FORMAT
+        self.relation_on    = cfg.MODEL.SOGNET.RELATION.ENABLED
         # fmt: on
 
-        self.stuff_cls_num  = 53
+        self.stuff_cls_num  = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES - cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.is_train = is_train
 
     def __call__(self, dataset_dict):
@@ -99,15 +100,17 @@ class SOGDatasetMapper:
             if self.crop_gen and instances.has("gt_masks"):
                 instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
 
-            filtered_instances = utils.filter_empty_instances(instances)
-            if len(filtered_instances) < 2:
-                instances = filtered_instances
-                gt_relation = -1 * torch.ones((1, 1))
-            else:
-                instances, gt_relation = get_relation_gt(filtered_instances)
-                instances.remove("bit_masks")
+            instances = utils.filter_empty_instances(instances)
+            # TODO: design a data structure for storing relation mat
+            if self.relation_on:
+                if len(instances) < 2:
+                    gt_relation = -1 * torch.ones((1, 1))
+                else:
+                    instances, gt_relation = get_relation_gt(instances)
+                dataset_dict["relation"] = gt_relation
 
-            dataset_dict["relation"] = gt_relation
+            if instances.has("bit_masks"):
+                instances.remove("bit_masks")
 
             dataset_dict["instances"] = instances
 

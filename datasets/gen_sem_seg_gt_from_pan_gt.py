@@ -16,24 +16,26 @@ from panopticapi.utils import rgb2id
 from pycocotools.coco import COCO
 
 
-
 def _process_panoptic_to_semantic(
     input_panoptic, output_semantic, output_panoptic, segments, img_id, coco_ins, id_map
 ):
     panoptic = np.asarray(Image.open(input_panoptic), dtype=np.uint32)
     panoptic = rgb2id(panoptic)
     output = np.zeros_like(panoptic, dtype=np.uint8) + 255
-    pan_output = panoptic.copy()
+    pan_output = output.copy()
 
     pan_masks = []
     pan_ids = []
+    cnt_id = 53
     for seg in segments:
         cat_id = seg["category_id"]
         new_cat_id = id_map[cat_id]
         mask = panoptic == seg["id"]
         if new_cat_id >= 53:
             pan_masks.append(mask)
-            pan_ids.append(seg["id"])
+            pan_ids.append(cnt_id)
+            pan_output[mask] = cnt_id
+            cnt_id += 1
         else:
             pan_output[mask] = new_cat_id
         output[mask] = new_cat_id
@@ -111,7 +113,6 @@ def separate_coco_semantic_from_panoptic(
     stuff_ids = [k["id"] for k in categories if k["isthing"] == 0]
     thing_ids = [k["id"] for k in categories if k["isthing"] == 1]
     id_map = {}  # map from category id to id in the output semantic annotation
-    assert len(stuff_ids) <= 254
     for i, stuff_id in enumerate(stuff_ids):
         id_map[stuff_id] = i
     for i, thing_id in enumerate(thing_ids):

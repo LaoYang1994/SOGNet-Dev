@@ -31,11 +31,9 @@ class SOGNet(nn.Module):
 
         # loss weight
         self.instance_loss_weight = cfg.MODEL.SOGNET.INSTANCE_LOSS_WEIGHT
-        self.sem_seg_loss_weight = cfg.MODEL.SOGNET.SEM_SEG_LOSS_WEIGHT
-        self.relation_loss_weight = cfg.MODEL.SOGNET.RELATION_LOSS_WEIGHT
-        self.panoptic_loss_weight = cfg.MODEL.SOGNET.PANOPTIC_LOSS_WEIGHT
 
         # options when combining instance & semantic outputs
+        # TODO: build inference
         self.combine_on = cfg.MODEL.SOGNET.COMBINE.ENABLED
         self.combine_overlap_threshold = cfg.MODEL.SOGNET.COMBINE.OVERLAP_THRESH
         self.combine_stuff_area_limit = cfg.MODEL.SOGNET.COMBINE.STUFF_AREA_LIMIT
@@ -48,7 +46,6 @@ class SOGNet(nn.Module):
         self.roi_heads = build_roi_heads(cfg, self.backbone.output_shape())
         self.sem_seg_head = build_sem_seg_head(cfg, self.backbone.output_shape())
         self.panoptic_head = build_panoptic_head(cfg)
-        self.relation_enable = cfg.MODEL.SOGNET.RELATION.ENABLED
 
         pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
         pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
@@ -78,7 +75,7 @@ class SOGNet(nn.Module):
         else:
             gt_sem_seg = None
 
-        if self.relation_enable and "relation" in batched_inputs[0]:
+        if "relation" in batched_inputs[0]:
             gt_relations = [x["relation"].to(self.device) for x in batched_inputs]
         else:
             gt_relations = None
@@ -103,17 +100,16 @@ class SOGNet(nn.Module):
         # semantic branch
         sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
         # panoptic branch
-        _, relation_losses, panoptic_losses = self.panoptic_head(
+        _, panoptic_losses = self.panoptic_head(
                 gt_mask_logits, sem_seg_logits, gt_instances, gt_relations, gt_pan_seg)
 
         # loss
         losses = {}
         losses.update(proposal_losses)
-        losses.update({k: v * self.sem_seg_loss_weight for k, v in sem_seg_losses.items()})
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
-        losses.update({k: v * self.panoptic_loss_weight for k, v in panoptic_losses.items()})
-        if self.relation_enable:
-            losses.update({k: v * self.relation_loss_weight for k, v in relation_losses.items()})
+        losses.update(sem_seg_losses)
+        # NOTICE: if relation enabled, panoptic_losses contain relation_losses
+        losses.update(panoptic_losses)
 
         return losses
 
@@ -161,91 +157,3 @@ class SOGNet(nn.Module):
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
         return images
 
-
-
-def combine_semantic_and_instance_outputs(
-    instance_results,
-    semantic_results,
-    overlap_threshold,
-    stuff_area_limit,
-    instances_confidence_threshold,
-):
-    """
-    Implement a simple combining logic following
-    "combine_semantic_and_instance_predictions.py" in panopticapi
-    to produce panoptic segmentation outputs.
-
-    Args:
-        instance_results: output of :func:`detector_postprocess`.
-        semantic_results: an (H, W) tensor, each is the contiguous semantic
-            category id
-
-    Returns:
-        panoptic_seg (Tensor): of shape (height, width) where the values are ids for each segment.
-        segments_info (list[dict]): Describe each segment in `panoptic_seg`.
-            Each dict contains keys "id", "category_id", "isthing".
-    """
-    panoptic_seg = torch.zeros_like(semantic_results, dtype=torch.int32)
-
-    # sort instance outputs by scores
-    sorted_inds = torch.argsort(-instance_results.scores)
-
-    current_segment_id = 0
-    segments_info = []
-
-    instance_masks = instance_results.pred_masks.to(dtype=torch.bool, device=panoptic_seg.device)
-
-    # Add instances one-by-one, check for overlaps with existing ones
-    for inst_id in sorted_inds:
-        score = instance_results.scores[inst_id].item()
-        if score < instances_confidence_threshold:
-            break
-        mask = instance_masks[inst_id]  # H,W
-        mask_area = mask.sum().item()
-
-        if mask_area == 0:
-            continue
-
-        intersect = (mask > 0) & (panoptic_seg > 0)
-        intersect_area = intersect.sum().item()
-
-        if intersect_area * 1.0 / mask_area > overlap_threshold:
-            continue
-
-        if intersect_area > 0:
-            mask = mask & (panoptic_seg == 0)
-
-        current_segment_id += 1
-        panoptic_seg[mask] = current_segment_id
-        segments_info.append(
-            {
-                "id": current_segment_id,
-                "isthing": True,
-                "score": score,
-                "category_id": instance_results.pred_classes[inst_id].item(),
-                "instance_id": inst_id.item(),
-            }
-        )
-
-    # Add semantic results to remaining empty areas
-    semantic_labels = torch.unique(semantic_results).cpu().tolist()
-    for semantic_label in semantic_labels:
-        if semantic_label == 0:  # 0 is a special "thing" class
-            continue
-        mask = (semantic_results == semantic_label) & (panoptic_seg == 0)
-        mask_area = mask.sum().item()
-        if mask_area < stuff_area_limit:
-            continue
-
-        current_segment_id += 1
-        panoptic_seg[mask] = current_segment_id
-        segments_info.append(
-            {
-                "id": current_segment_id,
-                "isthing": False,
-                "category_id": semantic_label,
-                "area": mask_area,
-            }
-        )
-
-    return panoptic_seg, segments_info

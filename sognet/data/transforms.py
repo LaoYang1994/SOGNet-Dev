@@ -89,10 +89,10 @@ def get_relation_gt(instances, sample_num=-1):
     return instances, relation_mat
 
 
-def pan_id2channel_id(pan_seg_gt, pan_ids, ch_id_shift=0, ignore_index=255):
+def pan_id2channel_id(pan_seg_gt, pan_ids, ch_id_shift=53, ignore_index=255):
     pan_ids = pan_ids.numpy()
     panel = np.zeros_like(pan_seg_gt)
-    panel[panel < ch_id_shift] = 1
+    panel[pan_seg_gt < ch_id_shift] = 1
     for i, pan_id in enumerate(pan_ids):
         if pan_id == -1:
             continue
