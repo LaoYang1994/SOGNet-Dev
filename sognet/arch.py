@@ -115,19 +115,18 @@ class SOGNet(nn.Module):
 
     
     def inference(self, batched_inputs):
-        assert not self.training
-
+        
         images = self.preprocess_image(batched_inputs)
         features = self.backbone(images.tensor)
 
         if self.proposal_generator:
             proposals, _ = self.proposal_generator(images, features)
         else:
-            assert "proposals" in batched_inputs[0]
-            proposals = [x["proposals"].to(self.device) for x in batched_inputs]
+            raise NotImplementedError
         
         detector_results, _ = self.roi_heads(images, features, proposals)
         sem_seg_results, _ = self.sem_seg_head(features)
+        pan_seg_results, _ = self.panoptic_head(None, sem_seg_results, detector_results)
 
         processed_results = []
         for sem_seg_result, detector_result, input_per_image, image_size in zip(

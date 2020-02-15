@@ -106,7 +106,6 @@ class SOGROIHeads(ROIHeads):
             pred_instances = self._forward_box(features_list, proposals)
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
-            # TODO(lhy): the pred instance should be processed
             pred_instances = self.forward_with_given_boxes(features, pred_instances)
             return pred_instances, {}
 
@@ -215,3 +214,20 @@ class SOGROIHeads(ROIHeads):
             mask_logits = self.mask_head(mask_features)
             mask_rcnn_inference(mask_logits, instances)
             return instances
+
+def mask_rcnn_inference(pred_mask_logits, pred_instances):
+
+    # Select masks corresponding to the predicted classes
+    num_masks = pred_mask_logits.shape[0]
+    class_pred = cat([i.pred_classes for i in pred_instances])
+    indices = torch.arange(num_masks, device=class_pred.device)
+    mask_logits_pred = pred_mask_logits[indices, class_pred][:, None]
+    # mask_probs_pred.shape: (B, 1, Hmask, Wmask)
+
+    num_boxes_per_image = [len(i) for i in pred_instances]
+    mask_logits_pred = mask_logits_pred.split(num_boxes_per_image, dim=0)
+
+    for logit, instances in zip(mask_probs_pred, pred_instances):
+        instances.pred_masks = logit.sigmoid()  # (1, Hmask, Wmask)
+        instances.mask_logit = logit
+
