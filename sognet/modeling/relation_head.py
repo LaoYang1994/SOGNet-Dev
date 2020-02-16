@@ -107,26 +107,13 @@ class RelationHead(nn.Module):
         return mask_logit_wo_overlap, loss_relation
 
     def inference(self, mask_logit, instance):
-        bbox = instance.gt_boxes.tensor
-        cls_idx = instance.gt_classes
+        bbox = instance.pred_boxes.tensor
+        cls_idx = instance.pred_classes
 
-        cls_relation = self.cls_relation(cls_idx)
-        pos_relation = self.position_relation(bbox)
+        relation_score = self.relation_predict(cls_idx, bbox)
+        mask_logit_wo_overlap = self.duplicate_removal(mask_logit, relation_score)
 
-        relation_feat = torch.cat([cls_relation, pos_relation], dim=1)
-        relation_embedding = self.P(relation_feat)
-        overlap_score = torch.sigmoid(relation_embedding).squeeze(0).squeeze(0)
-        relation_score = F.relu(overlap_score - overlap_score.transpose(0, 1), inplace=True)
-
-        # post process
-        mask_prob = torch.sigmoid(mask_logit)
-        overlap_part = (mask_logit * mask_prob)[:, :, None, ...] * mask_prob
-        overlap_part = overlap_part * relation_score[..., None, None]
-        overlap_part = overlap_part.sum(dim=2)
-        mask_logit_without_overlap = mask_logit - overlap_part
-        mask_logit_without_overlap = torch.cat([mask_logit_without_overlap, sep_mask_logit], dim=1)
-
-        return mask_logit_without_overlap, None
+        return mask_logit_without_overlap, {}
 
     def relation_predict(self, cls_idx, bbox):
 

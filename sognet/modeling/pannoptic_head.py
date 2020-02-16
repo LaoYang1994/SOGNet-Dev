@@ -82,7 +82,7 @@ class PanopticHead(nn.Module):
         if self.training:
             thing_mask_logit = self._unmap_mask_logit_single(mask_logit, instance, feat_size)
         else:
-            thing_mask_logit = self._unmap_mask_removal(mask_logit, instance, feat_size)
+            thing_mask_logit, instance = self._unmap_mask_removal(mask_logit, instance, feat_size)
 
         # relation module
         if self.relation_on:
@@ -141,13 +141,13 @@ class PanopticHead(nn.Module):
         score = instance.scores
         # for mask removal
         mask_panel = torch.zeros(
-                (self.thing_num_classes, size[0], size[1], torch.bool).to(self.device)
+                (self.thing_num_classes, size[0], size[1], torch.bool)).to(self.device)
 
-        num_things = cls_idx.size(0)
+        num_things = len(instance)
         thing_mask_logit = torch.zeros((1, num_things) + size, device=self.device)
 
         if num_things == 0:
-            return thing_mask_logit
+            return thing_mask_logit, instance
 
         order = (-score).argsort()
         bbox = bbox[order]
@@ -155,13 +155,12 @@ class PanopticHead(nn.Module):
         mask_logit = mask_logit[order]
 
         bbox = bbox.long()
-        bbox_w = bbox[:, 2] - bbox[:, 0] + 1
-        bbox_h = bbox[:, 3] - bbox[:, 1] + 1
+        bbox_wh = bbox[:, 2:] - bbox[:, :2] + 1
 
         # TODO: In this place, roi upsample maybe is better
         for i in range(num_things):
             ref_box = bbox[i]
-            h, w = bbox_h[i], bbox_w[i]
+            h, w = bbox_wh[i]
             logit = F.interpolate(
                 mask_logit[i].view(1, 1, self.mask_size, self.mask_size),
                 size=(h, w), mode='bilinear', align_corners=False)[0, 0]
@@ -184,8 +183,11 @@ class PanopticHead(nn.Module):
             mask_panel[cls_idx[i], y0: y1, x0: x1] |= crop_mask
             thing_mask_logit[0, i, y0: y1, x0: x1] = (
                     mask[0, 0, y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
+
+        order_inds = (order > 0).nonzero().reshape(-1)
+        instance = instance[order_inds]
         
-        return thing_mask_logit
+        return thing_mask_logit, instance
 
     def _crop_thing_logit_single(self, thing_sem_logit, instance):
 
@@ -193,8 +195,8 @@ class PanopticHead(nn.Module):
             bbox = instance.gt_boxes.tensor
             cls_idx = instance.gt_classes
         else:
-            bbox = None
-            cls_idx = None
+            bbox = instance.pred_boxes.tensor
+            cls_idx = instance.pred_classes
 
         h, w = thing_sem_logit.size()[-2:]
         num_things = cls_idx.size(0)
