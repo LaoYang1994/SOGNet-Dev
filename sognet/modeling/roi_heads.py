@@ -2,13 +2,11 @@ import torch
 import torch.nn as nn
 
 
-from detectron2.layers import ShapeSpec
-
+from detectron2.layers import ShapeSpec, cat
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
         select_foreground_proposals, build_box_head, build_mask_head)
 from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers, FastRCNNOutputs
-from detectron2.modeling.roi_heads.mask_head import mask_rcnn_loss
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -145,7 +143,7 @@ class SOGROIHeads(ROIHeads):
         else:
             boxes = [x.pred_boxes for x in instances]
         mask_features = self.mask_pooler(features, boxes)
-        mask_logits = self.mask_head(mask_features)
+        mask_logits = self.mask_head.layers(mask_features)
 
         return mask_logits
 
@@ -210,5 +208,23 @@ class SOGROIHeads(ROIHeads):
         else:
             pred_boxes = [x.pred_boxes for x in instances]
             mask_features = self.mask_pooler(features, pred_boxes)
-            return self.mask_head(mask_features, instances)
+            mask_logits = self.mask_head.layers(mask_features)
+            mask_rcnn_inference(mask_logits, instances)
+            return instances
+
+def mask_rcnn_inference(pred_mask_logits, pred_instances):
+
+    # Select masks corresponding to the predicted classes
+    num_masks = pred_mask_logits.shape[0]
+    class_pred = cat([i.pred_classes for i in pred_instances])
+    indices = torch.arange(num_masks, device=class_pred.device)
+    mask_logits_pred = pred_mask_logits[indices, class_pred][:, None]
+    # mask_probs_pred.shape: (B, 1, Hmask, Wmask)
+
+    num_boxes_per_image = [len(i) for i in pred_instances]
+    mask_logits_pred = mask_logits_pred.split(num_boxes_per_image, dim=0)
+
+    for logit, instances in zip(mask_logits_pred, pred_instances):
+        instances.pred_masks = logit.sigmoid()  # (1, Hmask, Wmask)
+        instances.mask_logit = logit
 
