@@ -27,6 +27,7 @@ class SOGROIHeads(ROIHeads):
         super(SOGROIHeads, self).__init__(cfg, input_shape)
         self._init_box_head(cfg)
         self._init_mask_head(cfg)
+        self.sog_test_score_thresh        = cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
 
     def _init_box_head(self, cfg):
         # fmt: off
@@ -181,7 +182,8 @@ class SOGROIHeads(ROIHeads):
             return outputs.losses()
         else:
             det_instances, pan_instances = outputs.inference(
-                self.test_score_thresh, self.test_nms_thresh, self.test_detections_per_img
+                self.test_score_thresh, self.sog_test_score_thresh, 
+                self.test_nms_thresh, self.test_detections_per_img
             )
             return det_instances, pan_instances
 
@@ -218,7 +220,7 @@ class SOGROIHeads(ROIHeads):
 
 class PanFastRCNNOutputs(FastRCNNOutputs):
 
-    def inference(self, score_thresh, nms_thresh, topk_per_image):
+    def inference(self, score_thresh, sog_score_thresh, nms_thresh, topk_per_image):
         boxes = self.predict_boxes()
         scores = self.predict_probs()
         image_shapes = self.image_shapes
@@ -229,7 +231,7 @@ class PanFastRCNNOutputs(FastRCNNOutputs):
 
         boxes, scores = self.cls_agnostic_convert(boxes, scores)
         pan_instances, _ = fast_rcnn_inference(
-            boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image
+            boxes, scores, image_shapes, sog_score_thresh, nms_thresh, topk_per_image
         )
 
         return det_instances, pan_instances
@@ -239,7 +241,6 @@ class PanFastRCNNOutputs(FastRCNNOutputs):
         ret_scores = []
         for box, score in zip(boxes, scores):
             box = box.reshape(-1, 4)
-            box = torch.cat([box, torch.zeros_like(box)], dim=1)
             score = score[:, :-1].reshape(-1, 1)
             score = torch.cat([score, torch.zeros_like(score)], dim=1)
 
