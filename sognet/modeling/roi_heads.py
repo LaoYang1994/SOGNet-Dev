@@ -6,7 +6,8 @@ from detectron2.layers import ShapeSpec, cat
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
         select_foreground_proposals, build_box_head, build_mask_head)
-from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers, FastRCNNOutputs
+from detectron2.modeling.roi_heads.fast_rcnn import (FastRCNNOutputLayers, FastRCNNOutputs,
+                                                    fast_rcnn_inference)
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -101,11 +102,13 @@ class SOGROIHeads(ROIHeads):
             del targets
             return gt_mask_logits, losses
         else:
-            pred_instances = self._forward_box(features_list, proposals)
+            det_instances, pan_instances = self._forward_box(features_list, proposals)
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
-            pred_instances = self.forward_with_given_boxes(features, pred_instances)
-            return pred_instances, {}
+            det_instances = self.forward_with_given_boxes(features, det_instances)
+            det_instances.remove("mask_logit")
+            pan_instances = self.forward_with_given_boxes(features, pan_instances)
+            return det_instances, pan_instances
 
     def forward_with_given_boxes(self, features, instances):
         """
@@ -167,7 +170,7 @@ class SOGROIHeads(ROIHeads):
         pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         del box_features
 
-        outputs = FastRCNNOutputs(
+        outputs = PanFastRCNNOutputs(
             self.box2box_transform,
             pred_class_logits,
             pred_proposal_deltas,
@@ -177,10 +180,10 @@ class SOGROIHeads(ROIHeads):
         if self.training:
             return outputs.losses()
         else:
-            pred_instances, _ = outputs.inference(
+            det_instances, pan_instances = outputs.inference(
                 self.test_score_thresh, self.test_nms_thresh, self.test_detections_per_img
             )
-            return pred_instances
+            return det_instances, pan_instances
 
     def _forward_mask(self, features, instances):
         """
@@ -211,6 +214,40 @@ class SOGROIHeads(ROIHeads):
             mask_logits = self.mask_head.layers(mask_features)
             mask_rcnn_inference(mask_logits, instances)
             return instances
+
+
+class PanFastRCNNOutputs(FastRCNNOutputs):
+
+    def inference(self, score_thresh, nms_thresh, topk_per_image):
+        boxes = self.predict_boxes()
+        scores = self.predict_probs()
+        image_shapes = self.image_shapes
+
+        det_instances, _ = fast_rcnn_inference(
+            boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image
+        )
+
+        boxes, scores = self.cls_agnostic_convert(boxes, scores)
+        pan_instances, _ = fast_rcnn_inference(
+            boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image
+        )
+
+        return det_instances, pan_instances
+
+    def cls_agnostic_convert(self, boxes, scores):
+        ret_boxes = []
+        ret_scores = []
+        for box, score in zip(boxes, scores):
+            box = box.reshape(-1, 4)
+            box = torch.cat([box, torch.zeros_like(box)], dim=1)
+            score = score[:, :-1].reshape(-1, 1)
+            score = torch.cat([score, torch.zeros_like(score)], dim=1)
+
+            ret_boxes.append(box)
+            ret_scores.append(score)
+
+        return ret_boxes, ret_scores
+
 
 def mask_rcnn_inference(pred_mask_logits, pred_instances):
 

@@ -34,12 +34,18 @@ class SOGNet(nn.Module):
 
         # options when combining instance & semantic outputs
         # TODO: build inference
-        self.combine_on = cfg.MODEL.SOGNET.COMBINE.ENABLED
-        self.combine_overlap_threshold = cfg.MODEL.SOGNET.COMBINE.OVERLAP_THRESH
-        self.combine_stuff_area_limit = cfg.MODEL.SOGNET.COMBINE.STUFF_AREA_LIMIT
-        self.combine_instances_confidence_threshold = (
-            cfg.MODEL.SOGNET.COMBINE.INSTANCES_CONFIDENCE_THRESH
+        self.stuff_area_limit = cfg.MODEL.SOGNET.POSTPROCESS.STUFF_AREA_LIMIT
+        self.instances_confidence_threshold = (
+            cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
         )
+
+        self.combine_on = cfg.MODEL.SOGNET.COMBINE.ENABLED
+        if self.combine_on:
+            self.combine_overlap_threshold = cfg.MODEL.SOGNET.COMBINE.OVERLAP_THRESH
+            self.combine_stuff_area_limit = cfg.MODEL.SOGNET.COMBINE.STUFF_AREA_LIMIT
+            self.combine_instances_confidence_threshold = (
+                cfg.MODEL.SOGNET.COMBINE.INSTANCES_CONFIDENCE_THRESH
+            )
 
         self.backbone = build_backbone(cfg)
         self.proposal_generator = build_proposal_generator(cfg, self.backbone.output_shape())
@@ -62,6 +68,7 @@ class SOGNet(nn.Module):
         # main part
         features = self.backbone(images.tensor)
 
+        # prepare gt
         if "instances" in batched_inputs[0]:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
         else:
@@ -113,7 +120,6 @@ class SOGNet(nn.Module):
 
         return losses
 
-    
     def inference(self, batched_inputs):
         
         images = self.preprocess_image(batched_inputs)
@@ -124,20 +130,21 @@ class SOGNet(nn.Module):
         else:
             raise NotImplementedError
         
-        detector_results, _ = self.roi_heads(images, features, proposals)
+        detector_results, pan_detector_results = self.roi_heads(images, features, proposals)
         sem_seg_results, _ = self.sem_seg_head(features)
-        pan_seg_results, _ = self.panoptic_head(None, sem_seg_results, detector_results)
+        pan_seg_results, _ = self.panoptic_head(None, sem_seg_results, pan_detector_results)
 
         processed_results = []
-        for sem_seg_result, detector_result, input_per_image, image_size in zip(
-            sem_seg_results, detector_results, batched_inputs, images.image_sizes
+        for sem_seg_result, detector_result, pan_seg_result, input_per_image, image_size in zip(
+            sem_seg_results, detector_results, pan_seg_results, batched_inputs, images.image_sizes
         ):
-            height = input_per_image.get("height")
-            width = input_per_image.get("width")
-            sem_seg_r = sem_seg_postprocess(sem_seg_result, image_size, height, width)
+            processed_result = {}
+            height     = input_per_image.get("height")
+            width      = input_per_image.get("width")
+            sem_seg_r  = sem_seg_postprocess(sem_seg_result, image_size, height, width)
             detector_r = detector_postprocess(detector_result, height, width)
-
-            processed_results.append({"sem_seg": sem_seg_r, "instances": detector_r})
+            processed_result.update({"sem_seg": sem_seg_r,
+                                      "instances": detector_r})
 
             if self.combine_on:
                 panoptic_r = combine_semantic_and_instance_outputs(
@@ -147,7 +154,11 @@ class SOGNet(nn.Module):
                     self.combine_stuff_area_limit,
                     self.combine_instances_confidence_threshold,
                 )
-                processed_results[-1]["panoptic_seg"] = panoptic_r
+            else:
+                panoptic_r = pan_seg_postprocess(pan_seg_result)
+            processed_result.update({"panoptic_seg": panoptic_r})
+
+            processed_results.append(processed_result)
         return processed_results
 
     def preprocess_image(self, batched_inputs):
@@ -156,3 +167,79 @@ class SOGNet(nn.Module):
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
         return images
 
+
+def pan_seg_postprocess(pan_results, stuff_area_limit):
+    pass
+
+
+def combine_semantic_and_instance_outputs(
+    instance_results,
+    semantic_results,
+    overlap_threshold,
+    stuff_area_limit,
+    instances_confidence_threshold,
+):
+    panoptic_seg = torch.zeros_like(semantic_results, dtype=torch.int32)
+
+    # sort instance outputs by scores
+    sorted_inds = torch.argsort(-instance_results.scores)
+
+    current_segment_id = 0
+    segments_info = []
+
+    instance_masks = instance_results.pred_masks.to(dtype=torch.bool, device=panoptic_seg.device)
+
+    # Add instances one-by-one, check for overlaps with existing ones
+    for inst_id in sorted_inds:
+        score = instance_results.scores[inst_id].item()
+        if score < instances_confidence_threshold:
+            break
+        mask = instance_masks[inst_id]  # H,W
+        mask_area = mask.sum().item()
+
+        if mask_area == 0:
+            continue
+
+        intersect = (mask > 0) & (panoptic_seg > 0)
+        intersect_area = intersect.sum().item()
+
+        if intersect_area * 1.0 / mask_area > overlap_threshold:
+            continue
+
+        if intersect_area > 0:
+            mask = mask & (panoptic_seg == 0)
+
+        current_segment_id += 1
+        panoptic_seg[mask] = current_segment_id
+        segments_info.append(
+            {
+                "id": current_segment_id,
+                "isthing": True,
+                "score": score,
+                "category_id": instance_results.pred_classes[inst_id].item(),
+                "instance_id": inst_id.item(),
+            }
+        )
+
+    # Add semantic results to remaining empty areas
+    semantic_labels = torch.unique(semantic_results).cpu().tolist()
+    for semantic_label in semantic_labels:
+        if semantic_label == 0:  # 0 is a special "thing" class
+            continue
+        mask = (semantic_results == semantic_label) & (panoptic_seg == 0)
+        mask_area = mask.sum().item()
+        if mask_area < stuff_area_limit:
+            continue
+
+        current_segment_id += 1
+        panoptic_seg[mask] = current_segment_id
+        segments_info.append(
+            {
+                "id": current_segment_id,
+                "isthing": False,
+                "category_id": semantic_label,
+                "area": mask_area,
+            }
+        )
+
+    return panoptic_seg, segments_info
