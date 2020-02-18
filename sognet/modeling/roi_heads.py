@@ -107,7 +107,6 @@ class SOGROIHeads(ROIHeads):
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
             det_instances = self.forward_with_given_boxes(features, det_instances)
-            det_instances.remove("mask_logit")
             pan_instances = self.forward_with_given_boxes(features, pan_instances)
             return det_instances, pan_instances
 
