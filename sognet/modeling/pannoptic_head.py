@@ -70,9 +70,9 @@ class PanopticHead(nn.Module):
             for instance in instances:
                 mask_logits.append(instance.mask_logit)
                 instance.remove("mask_logit")
-            pan_logits, _, _ = multi_apply(self.forward_single,
+            pan_results, _, _ = multi_apply(self.forward_single,
                     mask_logits, stuff_logits, thing_logits, instances)
-            return pan_logits, {}
+            return pan_results, {}
 
     def forward_single(
         self, mask_logit, stuff_logit, thing_logit, instance, gt_panoptic=None, gt_relation=None):
@@ -96,7 +96,9 @@ class PanopticHead(nn.Module):
         pan_logit = torch.cat([stuff_logit[None, ...], thing_logit], dim=1)
 
         if not self.training:
-            return pan_logit, {}, {}
+            pan_result = {"pan_pred": pan_logit.argmax(dim=1)[0],
+                          "pan_ins_cls": instance.pred_classes}
+            return pan_result, {}, {}
         
         gt_panoptic = F.interpolate(
                 gt_panoptic[None, None, ...].float(), size=feat_size).squeeze(1).long()

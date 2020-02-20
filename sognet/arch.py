@@ -38,6 +38,8 @@ class SOGNet(nn.Module):
         self.instances_confidence_threshold = (
             cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
         )
+        self.stuff_num_classes = (cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES - 
+                                  cfg.MODEL.ROI_HEADS.NUM_CLASSES)
 
         self.combine_on = cfg.MODEL.SOGNET.COMBINE.ENABLED
         if self.combine_on:
@@ -155,7 +157,10 @@ class SOGNet(nn.Module):
                     self.combine_instances_confidence_threshold,
                 )
             else:
-                panoptic_r = pan_seg_postprocess(pan_seg_result)
+                panoptic_r = pan_seg_postprocess(
+                    pan_seg_result,
+                    sem_seg_r.argmax(dim=0),
+                    self.stuff_area_limit)
             processed_result.update({"panoptic_seg": panoptic_r})
 
             processed_results.append(processed_result)
@@ -168,8 +173,68 @@ class SOGNet(nn.Module):
         return images
 
 
-def pan_seg_postprocess(pan_results, stuff_area_limit):
-    pass
+def pan_seg_postprocess(panoptic_results, semantic_results, stuff_area_limit=64**2):
+
+    panoptic_seg = torch.zeros_like(semantic_results, dtype=torch.int32)
+    segments_info = []
+    current_segment_id = 0
+
+    pan_results = [x["pan_pred"] for x in panoptic_results]
+    pred_classes = [x["pan_ins_cls"] for x in panoptic_results]
+
+    for pan_seg, sem_seg, pred_cls in zip(pan_results, semantic_results, pred_classes):
+        area_ids = pan_seg.unique()
+        inst_ids = area_ids[area_ids >= self.stuff_num_classes]
+
+        for inst_id in inst_ids:
+            mask = pan_seg == inst_id
+
+            sem_cls, area = sem_seg[mask].unique(return_counts=True)
+            sem_pred_cls = sem_cls[area.argmax()]
+            pan_pred_cls = pred_cls[inst_id - self.stuff_num_classes] + self.stuff_num_classes
+            if sem_pred_cls == pan_pred_cls:
+                current_segment_id += 1
+                panoptic_seg[mask] = current_segment_id
+                segments_info.append(
+                    {
+                        "id": current_segment_id,
+                        "isthing": True,
+                        "category_id": pan_pred_cls.item(),
+                        "instance_id": inst_id.item(),
+                    }
+                )
+            else:
+                if area.max() / area.sum() < 0.5 or sem_pred_cls >= self.stuff_num_classes:
+                    pan_seg[mask] = sem_pred_cls
+                else:
+                    current_segment_id += 1
+                    panoptic_seg[mask] = current_segment_id
+                    segments_info.append(
+                        {
+                            "id": current_segment_id,
+                            "isthing": True,
+                            "category_id": pan_pred_cls.item(),
+                            "instance_id": inst_id.item(),
+                        }
+                    )
+        area_ids = pan_seg.unique()
+        sem_ids = area_ids[area_ids < self.stuff_num_classes]
+        for sem_id in sem_ids:
+            mask = pan_seg == sem_id
+            if mask.sum() < stuff_area_limit:
+                continue
+            current_segment_id += 1
+            panoptic_seg[mask] = current_segment_id
+            segments_info.append(
+                {
+                    "id": current_segment_id,
+                    "isthing": False,
+                    "category_id": sem_id.item(),
+                    "area": mask.sum().item(),
+                }
+            )
+
+    return panoptic_seg, segments_info
 
 
 def combine_semantic_and_instance_outputs(
