@@ -35,9 +35,6 @@ class SOGNet(nn.Module):
         # options when combining instance & semantic outputs
         # TODO: build inference
         self.stuff_area_limit = cfg.MODEL.SOGNET.POSTPROCESS.STUFF_AREA_LIMIT
-        self.instances_confidence_threshold = (
-            cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
-        )
         self.stuff_num_classes = (cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES - 
                                   cfg.MODEL.ROI_HEADS.NUM_CLASSES)
 
@@ -160,6 +157,7 @@ class SOGNet(nn.Module):
                 panoptic_r = pan_seg_postprocess(
                     pan_seg_result,
                     sem_seg_r.argmax(dim=0),
+                    self.stuff_num_classes,
                     self.stuff_area_limit)
             processed_result.update({"panoptic_seg": panoptic_r})
 
@@ -173,7 +171,8 @@ class SOGNet(nn.Module):
         return images
 
 
-def pan_seg_postprocess(panoptic_results, semantic_results, stuff_area_limit=64**2):
+def pan_seg_postprocess(
+        panoptic_results, semantic_results, stuff_num_classes=53, stuff_area_limit=64**2):
 
     panoptic_seg = torch.zeros_like(semantic_results, dtype=torch.int32)
     segments_info = []
@@ -184,14 +183,14 @@ def pan_seg_postprocess(panoptic_results, semantic_results, stuff_area_limit=64*
 
     for pan_seg, sem_seg, pred_cls in zip(pan_results, semantic_results, pred_classes):
         area_ids = pan_seg.unique()
-        inst_ids = area_ids[area_ids >= self.stuff_num_classes]
+        inst_ids = area_ids[area_ids >= stuff_num_classes]
 
         for inst_id in inst_ids:
             mask = pan_seg == inst_id
 
             sem_cls, area = sem_seg[mask].unique(return_counts=True)
             sem_pred_cls = sem_cls[area.argmax()]
-            pan_pred_cls = pred_cls[inst_id - self.stuff_num_classes] + self.stuff_num_classes
+            pan_pred_cls = pred_cls[inst_id - stuff_num_classes] + stuff_num_classes
             if sem_pred_cls == pan_pred_cls:
                 current_segment_id += 1
                 panoptic_seg[mask] = current_segment_id
@@ -204,7 +203,7 @@ def pan_seg_postprocess(panoptic_results, semantic_results, stuff_area_limit=64*
                     }
                 )
             else:
-                if area.max() / area.sum() < 0.5 or sem_pred_cls >= self.stuff_num_classes:
+                if area.max() / area.sum() < 0.5 or sem_pred_cls >= stuff_num_classes:
                     pan_seg[mask] = sem_pred_cls
                 else:
                     current_segment_id += 1
@@ -218,7 +217,7 @@ def pan_seg_postprocess(panoptic_results, semantic_results, stuff_area_limit=64*
                         }
                     )
         area_ids = pan_seg.unique()
-        sem_ids = area_ids[area_ids < self.stuff_num_classes]
+        sem_ids = area_ids[area_ids < stuff_num_classes]
         for sem_id in sem_ids:
             mask = pan_seg == sem_id
             if mask.sum() < stuff_area_limit:
