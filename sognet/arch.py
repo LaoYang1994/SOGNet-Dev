@@ -181,17 +181,30 @@ def pan_seg_postprocess(
     pan_results = panoptic_results["pan_pred"]
     pred_classes = panoptic_results["pan_ins_cls"]
 
-    for pan_seg, sem_seg, pred_cls in zip(pan_results, semantic_results, pred_classes):
-        area_ids = pan_seg.unique()
-        inst_ids = area_ids[area_ids >= stuff_num_classes]
+    area_ids = pan_results.unique()
+    inst_ids = area_ids[area_ids >= stuff_num_classes]
 
-        for inst_id in inst_ids:
-            mask = pan_seg == inst_id
-            sem_cls, area = sem_seg[mask].unique(return_counts=True)
-            sem_pred_cls = sem_cls[area.argmax()]
-            pan_pred_cls = pred_cls[inst_id - stuff_num_classes] + stuff_num_classes
+    for inst_id in inst_ids:
+        mask = pan_results == inst_id
+        sem_cls, area = semantic_results[mask].unique(return_counts=True)
+        sem_pred_cls = sem_cls[area.argmax()]
+        pan_pred_cls = pred_classes[inst_id - stuff_num_classes] + stuff_num_classes
 
-            if sem_pred_cls == pan_pred_cls:
+        if sem_pred_cls == pan_pred_cls:
+            current_segment_id += 1
+            panoptic_seg[mask] = current_segment_id
+            segments_info.append(
+                {
+                    "id": current_segment_id,
+                    "isthing": True,
+                    "category_id": pan_pred_cls.item(),
+                    "instance_id": inst_id.item(),
+                }
+            )
+        else:
+            if area.max() / area.sum() < 0.5 or sem_pred_cls >= stuff_num_classes:
+                pan_results[mask] = sem_pred_cls
+            else:
                 current_segment_id += 1
                 panoptic_seg[mask] = current_segment_id
                 segments_info.append(
@@ -202,36 +215,22 @@ def pan_seg_postprocess(
                         "instance_id": inst_id.item(),
                     }
                 )
-            else:
-                if area.max() / area.sum() < 0.5 or sem_pred_cls >= stuff_num_classes:
-                    pan_seg[mask] = sem_pred_cls
-                else:
-                    current_segment_id += 1
-                    panoptic_seg[mask] = current_segment_id
-                    segments_info.append(
-                        {
-                            "id": current_segment_id,
-                            "isthing": True,
-                            "category_id": pan_pred_cls.item(),
-                            "instance_id": inst_id.item(),
-                        }
-                    )
-        area_ids = pan_seg.unique()
-        sem_ids = area_ids[area_ids < stuff_num_classes]
-        for sem_id in sem_ids:
-            mask = pan_seg == sem_id
-            if mask.sum() < stuff_area_limit:
-                continue
-            current_segment_id += 1
-            panoptic_seg[mask] = current_segment_id
-            segments_info.append(
-                {
-                    "id": current_segment_id,
-                    "isthing": False,
-                    "category_id": sem_id.item(),
-                    "area": mask.sum().item(),
-                }
-            )
+    area_ids = pan_results.unique()
+    sem_ids = area_ids[area_ids < stuff_num_classes]
+    for sem_id in sem_ids:
+        mask = pan_results == sem_id
+        if mask.sum() < stuff_area_limit:
+            continue
+        current_segment_id += 1
+        panoptic_seg[mask] = current_segment_id
+        segments_info.append(
+            {
+                "id": current_segment_id,
+                "isthing": False,
+                "category_id": sem_id.item(),
+                "area": mask.sum().item(),
+            }
+        )
 
     return panoptic_seg, segments_info
 
