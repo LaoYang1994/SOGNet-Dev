@@ -12,7 +12,7 @@ from functools import reduce
 from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES
 from fvcore.common.download import download
 
-from panopticapi.utils import rgb2id
+from panopticapi.utils import rgb2id, get_traceback
 from pycocotools.coco import COCO
 
 
@@ -50,8 +50,11 @@ def _process_panoptic_to_semantic(
     standard_annos = []
     annos = coco_ins.loadAnns(ann_ids)
 
-    for x in annos:
-        if x["iscrowd"] == 1 or x["area"] <= 0:
+    all_masks = np.stack([coco_ins.annToMask(x) for x in annos])
+    all_masks_area = all_masks.reshape(all_masks.shape[0], -1).sum(-1)
+
+    for i, x in enumerate(annos):
+        if x["iscrowd"] == 1 or x["area"] <= 0 or all_masks_area[i] <= 0:
             x["pan_id"] = -1
             ret_annos.append(x)
         else:
@@ -64,6 +67,8 @@ def _process_panoptic_to_semantic(
 
     inter = (ins_masks[:, None, :] * pan_masks).sum(-1)
     ins_masks_area = ins_masks.sum(-1).reshape(ins_masks.shape[0], 1)
+    assert (ins_masks_area > 0).all()
+    assert not np.isnan(ins_masks_area).any()
     iou = inter / ins_masks_area
 
     ins_arg = iou.argmax(axis=1)
@@ -89,6 +94,7 @@ def _process_panoptic_to_semantic(
     return ret_annos
 
 
+@get_traceback
 def process_single_core(proc_id, anno_set, pan_root, sem_seg_root, pan_seg_root):
     new_annos = []
     for working_idx, anno in enumerate(anno_set):
@@ -112,6 +118,8 @@ def process_single_core(proc_id, anno_set, pan_root, sem_seg_root, pan_seg_root)
 def separate_coco_semantic_from_panoptic(
     instance_json, panoptic_json, panoptic_root, sem_seg_root, pan_seg_root,
     categories, stuff_only=False):
+
+    start = time.time()
 
     os.makedirs(sem_seg_root, exist_ok=True)
     os.makedirs(pan_seg_root, exist_ok=True)
@@ -154,7 +162,7 @@ def separate_coco_semantic_from_panoptic(
     del coco_ins
     del obj
 
-    new_annos = reduce(lambda x, y: x + y, new_annos)
+    # new_annos = reduce(lambda x, y: x + y, new_annos)
 
     new_instances_json = instance_json.replace("train", "sog_train").replace("val", "sog_val")
     print("Start writing to {} ...".format(new_instances_json))
@@ -172,7 +180,7 @@ def separate_coco_semantic_from_panoptic(
 if __name__ == "__main__":
     dataset_dir = os.path.join(os.path.dirname(__file__), "coco")
     # for s in ["val2017", "train2017"]:
-    for s in ["val2017"]:
+    for s in ["train2017"]:
         separate_coco_semantic_from_panoptic(
             os.path.join(dataset_dir, "annotations/instances_{}.json".format(s)),
             os.path.join(dataset_dir, "annotations/panoptic_{}.json".format(s)),

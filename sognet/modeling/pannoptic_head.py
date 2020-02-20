@@ -85,9 +85,10 @@ class PanopticHead(nn.Module):
             thing_mask_logit, instance = self._unmap_mask_removal(mask_logit, instance, feat_size)
 
         # relation module
-        if self.relation_on and len(instance) > 0:
-            thing_mask_logit, relation_loss = self.relation_process(
-                    thing_mask_logit, instance, gt_relation)
+        if self.relation_on:
+            if self.training or len(instance):
+                thing_mask_logit, relation_loss = self.relation_process(
+                        thing_mask_logit, instance, gt_relation)
         else:
             relation_loss = {}
 
@@ -96,7 +97,7 @@ class PanopticHead(nn.Module):
         pan_logit = torch.cat([stuff_logit[None, ...], thing_logit], dim=1)
 
         if not self.training:
-            pan_result = {"pan_pred": pan_logit.argmax(dim=1)[0],
+            pan_result = {"pan_logit": pan_logit,
                           "pan_ins_cls": instance.pred_classes}
             return pan_result, {}, {}
         

@@ -63,7 +63,8 @@ def _process_panoptic_to_semantic(
     pan_masks = pan_masks.reshape(pan_masks.shape[0], -1)
 
     inter = (ins_masks[:, None, :] * pan_masks).sum(-1)
-    ins_masks_area = ins_masks.sum(-1).reshape(ins_masks.shape[0], 1)
+    ins_masks_area = ins_masks.sum(-1).reshape(-1, 1)
+    assert all(ins_masks_area.reshape(-1) >= 0)
     iou = inter / ins_masks_area
 
     ins_arg = iou.argmax(axis=1)
@@ -107,6 +108,7 @@ def separate_coco_semantic_from_panoptic(
             "id": corresponds to the "category_id" in the json annotations
             "isthing": 0 or 1
     """
+    start = time.time()
     os.makedirs(sem_seg_root, exist_ok=True)
     os.makedirs(pan_seg_root, exist_ok=True)
 
@@ -126,7 +128,7 @@ def separate_coco_semantic_from_panoptic(
 
     coco_ins = COCO(instance_json)
 
-    pool = mp.Pool(processes=max(mp.cpu_count() // 2, 4))
+    pool = mp.Pool(processes=max(mp.cpu_count(), 4))
 
     def iter_annotations():
         for i, anno in enumerate(obj["annotations"]):
@@ -142,7 +144,6 @@ def separate_coco_semantic_from_panoptic(
             yield input, sem_output, pan_output, segments, img_id
 
     print("Start writing to {} ...".format(sem_seg_root))
-    start = time.time()
     new_annos = pool.starmap(
         functools.partial(_process_panoptic_to_semantic, coco_ins=coco_ins, id_map=id_map),
         iter_annotations(),

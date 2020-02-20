@@ -154,6 +154,10 @@ class SOGNet(nn.Module):
                     self.combine_instances_confidence_threshold,
                 )
             else:
+                pan_pred = sem_seg_postprocess(
+                        pan_seg_result["pan_logit"], image_size, height, width)
+                del pan_seg_result["pan_logit"]
+                pan_seg_result["pan_pred"] = pan_pred.argmax(dim=0)
                 panoptic_r = pan_seg_postprocess(
                     pan_seg_result,
                     sem_seg_r.argmax(dim=0),
@@ -180,6 +184,7 @@ def pan_seg_postprocess(
 
     pan_results = panoptic_results["pan_pred"]
     pred_classes = panoptic_results["pan_ins_cls"]
+    print(pred_classes)
 
     area_ids = pan_results.unique()
     inst_ids = area_ids[area_ids >= stuff_num_classes]
@@ -188,8 +193,8 @@ def pan_seg_postprocess(
         mask = pan_results == inst_id
         sem_cls, area = semantic_results[mask].unique(return_counts=True)
         sem_pred_cls = sem_cls[area.argmax()]
-        pan_pred_cls = pred_classes[inst_id - stuff_num_classes] + stuff_num_classes
-
+        pan_pred_cls = pred_classes[inst_id - stuff_num_classes]
+        # pan_pred_cls = pred_classes[inst_id - stuff_num_classes] + stuff_num_classes
         if sem_pred_cls == pan_pred_cls:
             current_segment_id += 1
             panoptic_seg[mask] = current_segment_id
@@ -202,7 +207,7 @@ def pan_seg_postprocess(
                 }
             )
         else:
-            if area.max() / area.sum() < 0.5 or sem_pred_cls >= stuff_num_classes:
+            if area.max() / area.sum() >= 0.5 and sem_pred_cls < stuff_num_classes:
                 pan_results[mask] = sem_pred_cls
             else:
                 current_segment_id += 1
