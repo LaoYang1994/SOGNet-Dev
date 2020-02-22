@@ -125,6 +125,14 @@ _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
     ),
     "coco_2017_val_panoptic_sog": (
         "coco/val2017",
+        "coco/annotations/instances_val2017.json",
+        "coco/panoptic_val2017",
+        "coco/annotations/panoptic_val2017.json",
+        "coco/panoptic_all_cat_val2017",
+        [],
+    ),
+    "coco_2017_val_panoptic_sog_debug": (
+        "coco/val2017",
         "coco/annotations/instances_sog_val2017.json",
         "coco/panoptic_seg_val2017",
         "coco/annotations/panoptic_val2017.json",
