@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 
-
 from detectron2.layers import ShapeSpec, cat
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
         select_foreground_proposals, build_box_head, build_mask_head)
-from detectron2.modeling.roi_heads.fast_rcnn import (FastRCNNOutputLayers, FastRCNNOutputs,
-                                                    fast_rcnn_inference)
+from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers
+
+from .rcnn_customized import PanFastRCNNOutputs, mask_rcnn_inference
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -215,53 +215,3 @@ class SOGROIHeads(ROIHeads):
             mask_logits = self.mask_head.layers(mask_features)
             mask_rcnn_inference(mask_logits, instances)
             return instances
-
-
-class PanFastRCNNOutputs(FastRCNNOutputs):
-
-    def inference(self, score_thresh, sog_score_thresh, nms_thresh, topk_per_image):
-        boxes = self.predict_boxes()
-        scores = self.predict_probs()
-        image_shapes = self.image_shapes
-
-        det_instances, _ = fast_rcnn_inference(
-            boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image
-        )
-
-        boxes, scores = self.cls_agnostic_convert(boxes, scores)
-        pan_instances, _ = fast_rcnn_inference(
-            boxes, scores, image_shapes, sog_score_thresh, nms_thresh, topk_per_image
-        )
-
-        return det_instances, pan_instances
-
-    def cls_agnostic_convert(self, boxes, scores):
-        ret_boxes = []
-        ret_scores = []
-        for box, score in zip(boxes, scores):
-            box = box.reshape(-1, 4)
-            score = score[:, :-1].reshape(-1, 1)
-            score = torch.cat([score, torch.zeros_like(score)], dim=1)
-
-            ret_boxes.append(box)
-            ret_scores.append(score)
-
-        return ret_boxes, ret_scores
-
-
-def mask_rcnn_inference(pred_mask_logits, pred_instances):
-
-    # Select masks corresponding to the predicted classes
-    num_masks = pred_mask_logits.shape[0]
-    class_pred = cat([i.pred_classes for i in pred_instances])
-    indices = torch.arange(num_masks, device=class_pred.device)
-    mask_logits_pred = pred_mask_logits[indices, class_pred][:, None]
-    # mask_probs_pred.shape: (B, 1, Hmask, Wmask)
-
-    num_boxes_per_image = [len(i) for i in pred_instances]
-    mask_logits_pred = mask_logits_pred.split(num_boxes_per_image, dim=0)
-
-    for logit, instances in zip(mask_logits_pred, pred_instances):
-        instances.pred_masks = logit.sigmoid()  # (1, Hmask, Wmask)
-        instances.mask_logit = logit
-
