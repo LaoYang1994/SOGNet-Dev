@@ -184,7 +184,6 @@ def pan_seg_postprocess(
 
     pan_results = panoptic_results["pan_pred"]
     pred_classes = panoptic_results["pan_ins_cls"]
-    print(pred_classes)
 
     area_ids = pan_results.unique()
     inst_ids = area_ids[area_ids >= stuff_num_classes]

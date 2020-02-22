@@ -143,7 +143,8 @@ class PanopticHead(nn.Module):
         cls_idx = instance.pred_classes
         score = instance.scores
         # for mask removal
-        mask_panel = torch.zeros((self.thing_num_classes, ) + size, dtype=torch.bool, device=self.device)
+        mask_panel = torch.zeros((self.thing_num_classes, ) + size, 
+                dtype=torch.bool, device=self.device)
 
         num_things = len(instance)
         thing_mask_logit = torch.zeros((1, num_things) + size, device=self.device)
@@ -162,7 +163,7 @@ class PanopticHead(nn.Module):
         # TODO: In this place, roi upsample maybe is better
         for i in range(num_things):
             ref_box = bbox[i]
-            h, w = bbox_wh[i]
+            w, h = bbox_wh[i]
             logit = F.interpolate(
                 mask_logit[i].view(1, 1, self.mask_size, self.mask_size),
                 size=(h, w), mode='bilinear', align_corners=False)[0, 0]
@@ -175,19 +176,20 @@ class PanopticHead(nn.Module):
 
             crop_mask = mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]]
             mask_area = crop_mask.sum()
-            crop_mask_panel = mask_panel[cls_ids[i], y0: y1, x0: x1]
+            crop_mask_panel = mask_panel[cls_idx[i], y0: y1, x0: x1]
 
             if (mask_area == 0) or (
-                (crop_mask_panel & mask).sum().float() / mask_area.float() > self.removal_thresh):
+                (crop_mask_panel & crop_mask).sum().float() / mask_area.float() > self.removal_thresh):
                 order[i] = -1
                 continue
 
             mask_panel[cls_idx[i], y0: y1, x0: x1] |= crop_mask
             thing_mask_logit[0, i, y0: y1, x0: x1] = (
-                    mask[0, 0, y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
+                    mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
 
         order_inds = (order > 0).nonzero().reshape(-1)
         instance = instance[order_inds]
+        thing_mask_logit = thing_mask_logit[:, order_inds]
         
         return thing_mask_logit, instance
 

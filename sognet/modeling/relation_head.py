@@ -107,14 +107,13 @@ class RelationHead(nn.Module):
         return mask_logit_wo_overlap, loss_relation
 
     def inference(self, mask_logit, instance):
-        print(mask_logit.size(), len(instance))
         bbox = instance.pred_boxes.tensor
         cls_idx = instance.pred_classes
 
         relation_score = self.relation_predict(cls_idx, bbox)
         mask_logit_wo_overlap = self.duplicate_removal(mask_logit, relation_score)
 
-        return mask_logit_without_overlap, {}
+        return mask_logit_wo_overlap, {}
 
     def relation_predict(self, cls_idx, bbox):
 

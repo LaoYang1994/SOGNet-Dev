@@ -88,26 +88,22 @@ def get_sog_metadata():
         "thing_classes": thing_classes,
         "thing_colors": thing_colors,
     }
-    stuff_ids = [k["id"] for k in COCO_CATEGORIES if k["isthing"] == 0]
-    assert len(stuff_ids) == 53, len(stuff_ids)
+    stuff_ids = [k["id"] for k in COCO_CATEGORIES if k["isthing"] == 0] + thing_ids
+    assert len(stuff_ids) == 133, len(stuff_ids)
 
-    # For semantic segmentation, this mapping maps from contiguous stuff id
-    # (in [0, 53], used in models) to ids in the dataset (used for processing results)
-    # The id 0 is mapped to an extra category "thing".
-    stuff_dataset_id_to_contiguous_id = {k: i + 1 for i, k in enumerate(stuff_ids)}
+    stuff_dataset_id_to_contiguous_id = {k: i for i, k in enumerate(stuff_ids)}
     # When converting COCO panoptic annotations to semantic annotations
     # We label the "thing" category to 0
-    stuff_dataset_id_to_contiguous_id[0] = 0
 
     # 54 names for COCO stuff categories (including "things")
-    stuff_classes = ["things"] + [
+    stuff_classes = [
         k["name"].replace("-other", "").replace("-merged", "")
         for k in COCO_CATEGORIES
         if k["isthing"] == 0
-    ]
+    ] + thing_classes
 
     # NOTE: I randomly picked a color for things
-    stuff_colors = [[82, 18, 128]] + [k["color"] for k in COCO_CATEGORIES if k["isthing"] == 0]
+    stuff_colors = [k["color"] for k in COCO_CATEGORIES if k["isthing"] == 0] + (thing_colors)
     ret = {
         "stuff_dataset_id_to_contiguous_id": stuff_dataset_id_to_contiguous_id,
         "stuff_classes": stuff_classes,
