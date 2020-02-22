@@ -1,4 +1,4 @@
-# -*- coding: utf-7 -*-
+# -*- coding: utf-8 -*-
 # Copyright (c) ZERO Lab, Inc. and its affiliates. All Rights Reserved
 
 import torch
@@ -192,8 +192,7 @@ def pan_seg_postprocess(
         mask = pan_results == inst_id
         sem_cls, area = semantic_results[mask].unique(return_counts=True)
         sem_pred_cls = sem_cls[area.argmax()]
-        pan_pred_cls = pred_classes[inst_id - stuff_num_classes]
-        # pan_pred_cls = pred_classes[inst_id - stuff_num_classes] + stuff_num_classes
+        pan_pred_cls = pred_classes[inst_id - stuff_num_classes] + stuff_num_classes
         if sem_pred_cls == pan_pred_cls:
             current_segment_id += 1
             panoptic_seg[mask] = current_segment_id
