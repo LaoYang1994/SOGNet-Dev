@@ -137,14 +137,15 @@ class RelationHead(nn.Module):
         return mask_logit_wo_overlap
 
     def duplicate_removal_loop(self, mask_logit, relation_score):
-        mask_area = torch.sigmoid(mask_logit) * mask_logit
+        mask_prob = torch.sigmoid(mask_logit)
         mask_logit_wo_overlap = mask_logit
 
         num_things = mask_logit.size(1)
 
         for i in range(num_things):
-            overlap_part = mask_area[0, [i]] * mask_logit[0]
-            overlap_part = overlap_part * relation_score[i].reshape(-1, 1, 1).sum(dim=0)
+            overlap_part = (mask_logit * mask_prob)[0, [i]] * mask_prob[0]
+            overlap_part = overlap_part * relation_score[i].reshape(-1, 1, 1)
+            overlap_part = overlap_part.sum(dim=0)
             mask_logit_wo_overlap[0, i] -= overlap_part
 
         return mask_logit_wo_overlap
