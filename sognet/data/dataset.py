@@ -125,45 +125,28 @@ _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
         ["pan_id"],
     ),
     "coco_2017_val_panoptic_sog": (
-        "coco/train2017",
-        # generate by running the scripts in datasets
-        "coco/annotations/instances_sog_train2017.json",
-        "coco/panoptic_seg_train2017",
-        "coco/annotations/panoptic_train2017.json",
-        "coco/panoptic_all_cat_train2017",
-        ["pan_id"],
+        "coco/val2017",
+        "coco/annotations/instances_val2017.json",
+        "coco/panoptic_val2017",
+        "coco/annotations/panoptic_val2017.json",
+        "coco/panoptic_all_cat_val2017",
+        [],
     ),
-
-#     "coco_2017_val_panoptic_sog": (
-        # "coco/val2017",
-        # "coco/annotations/instances_val2017.json",
-        # "coco/panoptic_val2017",
-        # "coco/annotations/panoptic_val2017.json",
-        # "coco/panoptic_all_cat_val2017",
-        # [],
-    # ),
-#     "coco_2017_val_panoptic_sog_debug": (
-        # "coco/val2017",
-        # "coco/annotations/instances_sog_val2017.json",
-        # "coco/panoptic_seg_val2017",
-        # "coco/annotations/panoptic_val2017.json",
-        # "coco/panoptic_all_cat_val2017",
-        # ["pan_id"],
-    # )
+    "coco_2017_val_panoptic_sog_debug": (
+        "coco/val2017",
+        "coco/annotations/instances_sog_val2017.json",
+        "coco/panoptic_seg_val2017",
+        "coco/annotations/panoptic_val2017.json",
+        "coco/panoptic_all_cat_val2017",
+        ["pan_id"],
+    )
 }
 
 
-for (
-    prefix, (image_root, instances_json, panoptic_root, panoptic_json, semantic_root, extra_keys),
-) in _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG.items():
-
-    sog_metadata   = get_sog_metadata()
-    image_root     = os.path.join("datasets", image_root)
-    instances_json = os.path.join("datasets", instances_json)
-    panoptic_root  = os.path.join("datasets", panoptic_root)
-    panoptic_json  = os.path.join("datasets", panoptic_json)
-    sem_seg_root   = os.path.join("datasets", semantic_root)
-
+def register_dataset(
+    # This function is necessary!
+    # See https://stackoverflow.com/questions/19837486/python-lambda-in-a-loop
+    image_root, instances_json, panoptic_root, panoptic_json, sem_seg_root, metadata):
     DatasetCatalog.register(
         prefix,
         lambda: merge_to_panoptic_sog(
@@ -181,4 +164,19 @@ for (
         evaluator_type="coco_panoptic_seg",
         **sog_metadata
     )
+
+
+for (
+    prefix, (image_root, instances_json, panoptic_root, panoptic_json, semantic_root, extra_keys),
+) in _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG.items():
+
+    sog_metadata   = get_sog_metadata()
+    image_root     = os.path.join("datasets", image_root)
+    instances_json = os.path.join("datasets", instances_json)
+    panoptic_root  = os.path.join("datasets", panoptic_root)
+    panoptic_json  = os.path.join("datasets", panoptic_json)
+    sem_seg_root   = os.path.join("datasets", semantic_root)
+
+    register_dataset(
+            image_root, instances_json, panoptic_root, panoptic_json, sem_seg_root, sog_metadata)
 
