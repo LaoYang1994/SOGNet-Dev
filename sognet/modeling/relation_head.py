@@ -111,7 +111,7 @@ class RelationHead(nn.Module):
         cls_idx = instance.pred_classes
 
         relation_score = self.relation_predict(cls_idx, bbox)
-        mask_logit_wo_overlap = self.duplicate_removal(mask_logit, relation_score)
+        mask_logit_wo_overlap = self.duplicate_removal_loop(mask_logit, relation_score)
 
         return mask_logit_wo_overlap, {}
 
@@ -133,6 +133,19 @@ class RelationHead(nn.Module):
         overlap_part = overlap_part * relation_score[..., None, None]
         overlap_part = overlap_part.sum(dim=2)
         mask_logit_wo_overlap = mask_logit - overlap_part
+
+        return mask_logit_wo_overlap
+
+    def duplicate_removal_loop(self, mask_logit, relation_score):
+        mask_area = torch.sigmoid(mask_logit) * mask_logit
+        mask_logit_wo_overlap = mask_logit
+
+        num_things = mask_logit.size(1)
+
+        for i in range(num_things):
+            overlap_part = mask_area[0, [i]] * mask_logit[0]
+            overlap_part = overlap_part * relation_score[i].reshape(-1, 1, 1).sum(dim=0)
+            mask_logit_wo_overlap[0, i] -= overlap_part
 
         return mask_logit_wo_overlap
 
