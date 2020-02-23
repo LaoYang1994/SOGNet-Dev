@@ -1,5 +1,5 @@
 import torch
-from functools import reduce
+from functools import reduce, partial
 
 
 __all__ = ["multi_apply", "reduce_loss"]

@@ -14,13 +14,14 @@ logger = logging.getLogger(__name__)
 def merge_to_panoptic_sog(detection_dicts, sem_seg_dicts, pan_dicts):
     results = []
     sem_seg_file_to_entry = {x["file_name"]: x for x in sem_seg_dicts}
-    pan_file_to_entry = {x["file_name"]: x for x in pan_dicts}
+    pan_seg_file_to_entry = {x["file_name"]: x for x in pan_dicts}
     assert len(sem_seg_file_to_entry) > 0
+    assert len(pan_seg_file_to_entry) > 0
 
     for det_dict in detection_dicts:
         dic = copy.copy(det_dict)
         dic.update(sem_seg_file_to_entry[dic["file_name"]])
-        dic.update(pan_file_to_entry[dic["file_name"]])
+        dic.update(pan_seg_file_to_entry[dic["file_name"]])
         results.append(dic)
     return results
 
@@ -103,7 +104,7 @@ def get_sog_metadata():
     ] + thing_classes
 
     # NOTE: I randomly picked a color for things
-    stuff_colors = [k["color"] for k in COCO_CATEGORIES if k["isthing"] == 0] + (thing_colors)
+    stuff_colors = [k["color"] for k in COCO_CATEGORIES if k["isthing"] == 0] + thing_colors
     ret = {
         "stuff_dataset_id_to_contiguous_id": stuff_dataset_id_to_contiguous_id,
         "stuff_classes": stuff_classes,
@@ -124,21 +125,31 @@ _PREDEFINED_SPLITS_COCO_PANOPTIC_SOG = {
         ["pan_id"],
     ),
     "coco_2017_val_panoptic_sog": (
-        "coco/val2017",
-        "coco/annotations/instances_val2017.json",
-        "coco/panoptic_val2017",
-        "coco/annotations/panoptic_val2017.json",
-        "coco/panoptic_all_cat_val2017",
-        [],
-    ),
-    "coco_2017_val_panoptic_sog_debug": (
-        "coco/val2017",
-        "coco/annotations/instances_sog_val2017.json",
-        "coco/panoptic_seg_val2017",
-        "coco/annotations/panoptic_val2017.json",
-        "coco/panoptic_all_cat_val2017",
+        "coco/train2017",
+        # generate by running the scripts in datasets
+        "coco/annotations/instances_sog_train2017.json",
+        "coco/panoptic_seg_train2017",
+        "coco/annotations/panoptic_train2017.json",
+        "coco/panoptic_all_cat_train2017",
         ["pan_id"],
-    )
+    ),
+
+#     "coco_2017_val_panoptic_sog": (
+        # "coco/val2017",
+        # "coco/annotations/instances_val2017.json",
+        # "coco/panoptic_val2017",
+        # "coco/annotations/panoptic_val2017.json",
+        # "coco/panoptic_all_cat_val2017",
+        # [],
+    # ),
+#     "coco_2017_val_panoptic_sog_debug": (
+        # "coco/val2017",
+        # "coco/annotations/instances_sog_val2017.json",
+        # "coco/panoptic_seg_val2017",
+        # "coco/annotations/panoptic_val2017.json",
+        # "coco/panoptic_all_cat_val2017",
+        # ["pan_id"],
+    # )
 }
 
 
@@ -170,3 +181,4 @@ for (
         evaluator_type="coco_panoptic_seg",
         **sog_metadata
     )
+

@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# Copyright (c) ZERO Lab, Inc. and its affiliates. All Rights Reserved
+
 import logging
 import torch
 
@@ -10,8 +13,52 @@ from ..utils import multi_apply
 logger = logging.getLogger(__name__)
 
 
+__all__ = ['PanFastRCNNOutputs', 'mask_rcnn_inference']
+
+
+class PanFastRCNNOutputs(FastRCNNOutputs):
+
+    def inference(self, score_thresh, sog_score_thresh, nms_thresh, topk_per_image):
+        boxes = self.predict_boxes()
+        scores = self.predict_probs()
+        image_shapes = self.image_shapes
+
+        det_instances, _ = fast_rcnn_inference(
+            image_shapes, boxes, scores, score_thresh, nms_thresh, topk_per_image
+        )
+
+        boxes, scores, classes = self.cls_agnostic_convert(boxes, scores)
+        pan_instances, _ = fast_rcnn_inference(
+            image_shapes, boxes, scores, sog_score_thresh, nms_thresh, topk_per_image, classes
+        )
+
+        return det_instances, pan_instances
+
+    def cls_agnostic_convert(self, boxes, scores):
+        ret_boxes = []
+        ret_scores = []
+        ret_classes = []
+        for box, score in zip(boxes, scores):
+            score = score[:, :-1]
+            num_bboxes, num_classes = score.size()
+            score = score.reshape(-1)
+            score = torch.stack([score, torch.zeros_like(score)], dim=-1)
+
+            box = box.reshape(-1, 4)
+
+            classes = torch.arange(num_classes, dtype=torch.long, device=score.device)
+            classes = classes.repeat(num_bboxes).reshape(-1, 1)
+
+            ret_boxes.append(box)
+            ret_scores.append(score)
+            ret_classes.append(classes)
+
+        return ret_boxes, ret_scores, ret_classes
+
+
 def fast_rcnn_inference(
-    boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image, classes=None):
+    image_shapes, boxes, scores, score_thresh, nms_thresh, topk_per_image, classes=None
+):
     if classes is None:
         result_per_image = multi_apply(
             fast_rcnn_inference_single_image,
@@ -34,7 +81,7 @@ def fast_rcnn_inference(
             topk_per_image=topk_per_image
         )
 
-    return tuple(list(x) for x in zip(*result_per_image))
+    return result_per_image
 
 
 def fast_rcnn_inference_single_image(
@@ -77,54 +124,13 @@ def fast_rcnn_inference_single_image(
     result.pred_boxes = Boxes(boxes)
     result.scores = scores
     if replace_cls:
-        result.pred_classes = classes[filter_inds[:, 0], 0]
+        result.pred_classes = classes[keep]
     else:
         result.pred_classes = filter_inds[:, 1]
     return result, filter_inds[:, 0]
 
 
-class PanFastRCNNOutputs(FastRCNNOutputs):
-
-    def inference(self, score_thresh, sog_score_thresh, nms_thresh, topk_per_image):
-        boxes = self.predict_boxes()
-        scores = self.predict_probs()
-        image_shapes = self.image_shapes
-
-        det_instances, _ = fast_rcnn_inference(
-            boxes, scores, image_shapes, score_thresh, nms_thresh, topk_per_image
-        )
-
-        boxes, scores, classes = self.cls_agnostic_convert(boxes, scores)
-        pan_instances, _ = fast_rcnn_inference(
-            boxes, scores, image_shapes, sog_score_thresh, nms_thresh, topk_per_image, classes
-        )
-
-        return det_instances, pan_instances
-
-    def cls_agnostic_convert(self, boxes, scores):
-        ret_boxes = []
-        ret_scores = []
-        ret_classes = []
-        for box, score in zip(boxes, scores):
-            score = score[:, :-1]
-            num_bboxes, num_classes = score.size()
-            score = score.reshape(-1)
-            score = torch.stack([score, torch.zeros_like(score)], dim=-1)
-
-            box = box.reshape(-1, 4)
-
-            classes = torch.arange(num_classes, dtype=torch.long, device=score.device)
-            classes = classes.repeat(num_bboxes).reshape(-1, 1)
-
-            ret_boxes.append(box)
-            ret_scores.append(score)
-            ret_classes.append(classes)
-
-        return ret_boxes, ret_scores, ret_classes
-
-
 def mask_rcnn_inference(pred_mask_logits, pred_instances):
-
     # Select masks corresponding to the predicted classes
     num_masks = pred_mask_logits.shape[0]
     class_pred = cat([i.pred_classes for i in pred_instances])
