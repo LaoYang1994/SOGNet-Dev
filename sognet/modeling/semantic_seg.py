@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from detectron2.layers.deform_conv import DeformConv
 from detectron2.layers.roi_align import ROIAlign
 from detectron2.layers import Conv2d, ShapeSpec
-from detectron2.modeling.poolers import ROIAlign
+from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.meta_arch.semantic_seg import SEM_SEG_HEADS_REGISTRY
 
 
@@ -141,14 +141,15 @@ class XDeformConvSemSegFPNHead(nn.Module):
         if self.fcn_roi_on:
             self.fcn_roi_loss_weight   = cfg.MODEL.SOGNET.FCN_ROI.LOSS_WEIGHT
             pooler_resolution = cfg.MODEL.ROI_MASK_HEAD.POOLER_RESOLUTION * 2
-            pooler_scale      = 1.0 / self.common_stride
+            pooler_scales     = (1.0 / self.common_stride, )
             sampling_ratio    = cfg.MODEL.ROI_MASK_HEAD.POOLER_SAMPLING_RATIO
+            pooler_type       = cfg.MODEL.ROI_MASK_HEAD.POOLER_TYPE
 
-            self.roi_pooler = ROIAlign(
+            self.roi_pooler = ROIPooler(
                 output_size=pooler_resolution,
-                spatial_scale=pooler_scale,
+                scales=pooler_scales,
                 sampling_ratio=sampling_ratio,
-                aligned=False
+                pooler_type=pooler_type
             )
 
         self.fcn_subnet = DeformConvFCNSubNet(
@@ -189,7 +190,7 @@ class XDeformConvSemSegFPNHead(nn.Module):
             if self.fcn_roi_on:
                 assert gt_fcn_roi is not None
                 assert instances is not None
-                rois = torch.cat([x.gt_boxes for x in instances], dim=0)
+                rois = [x.gt_boxes.tensor for x in instances]
                 roi_feats = self.roi_pooler(seg_features, rois)
                 roi_scores = self.predictor(roi_feats)
                 fcn_roi_loss = F.cross_entropy(
