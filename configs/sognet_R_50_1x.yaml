@@ -33,7 +33,7 @@ MODEL:
     NUM_CONV: 4
     POOLER_RESOLUTION: 14
   SEM_SEG_HEAD:
-    NAME: "XDeformConvSemSegFPNHead"
+    NAME: "XDCNSemSegFPNHead"
     NUM_LAYERS: 3
     LOSS_WEIGHT: 0.2
     NUM_CLASSES: 133
@@ -44,7 +44,7 @@ MODEL:
       ENABLED: True
       LOSS_WEIGHT: 0.04
     RELATION:
-      ENABLED: True
+      ENABLED: False
       CLS_EMBEDDING_DIM: 256
       POS_EMBEDDING_DIM: 128
       LOSS_WEIGHT: 1.0
@@ -54,6 +54,7 @@ MODEL:
 
 DATASETS:
   TRAIN: ("coco_2017_train_panoptic_sog",)
+  # TRAIN: ("coco_2017_val_panoptic_sog_debug",)
   TEST: ("coco_2017_val_panoptic_sog",)
 SOLVER:
   IMS_PER_BATCH: 8
@@ -62,5 +63,6 @@ SOLVER:
   MAX_ITER: 180000
   CHECKPOINT_PERIOD: 5000
 INPUT:
-  MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
-OUTPUT_DIR: "./output/train2017_sog_bs8_1x"
+  MIN_SIZE_TRAIN: (800, )
+  # MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+OUTPUT_DIR: "./output/train2017_ups"

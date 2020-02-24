@@ -9,6 +9,7 @@ from detectron2.layers.deform_conv import DeformConv
 from detectron2.layers.roi_align import ROIAlign
 from detectron2.layers import Conv2d, ShapeSpec
 from detectron2.modeling.poolers import ROIPooler
+from detectron2.structures import Boxes
 from detectron2.modeling.meta_arch.semantic_seg import SEM_SEG_HEADS_REGISTRY
 
 
@@ -121,11 +122,11 @@ class DeformConvFCNSubNet(nn.Module):
 
 
 @SEM_SEG_HEADS_REGISTRY.register()
-class XDeformConvSemSegFPNHead(nn.Module):
+class XDCNSemSegFPNHead(nn.Module):
 
     def __init__(self, cfg, input_shape: Dict[str, ShapeSpec]):
 
-        super(XDeformConvSemSegFPNHead, self).__init__()
+        super(XDCNSemSegFPNHead, self).__init__()
 
         self.in_features         = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES
         feature_channels         = {k: v.channels for k, v in input_shape.items()}
@@ -190,7 +191,14 @@ class XDeformConvSemSegFPNHead(nn.Module):
             if self.fcn_roi_on:
                 assert gt_fcn_roi is not None
                 assert instances is not None
-                rois = [x.gt_boxes for x in instances]
+                if gt_fcn_roi.size(0) == 0:
+                    dummy_size = gt_fcn_roi.size()
+                    dummy_size[0] = len(instances)
+                    gt_fcn_roi = torch.zeros(dummy_size).type_as(gt_fcn_roi) + 255
+                    dummy_box = torch.tensor([0., 0., 1., 1.]).to(self.device)
+                    rois = [Box(dummy_box) for i in range(len(instances))] 
+                else:
+                    rois = [x.gt_boxes for x in instances]
                 roi_feats = self.roi_pooler([seg_features], rois)
                 roi_scores = self.predictor(roi_feats)
                 fcn_roi_loss = F.cross_entropy(
