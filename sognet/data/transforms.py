@@ -94,7 +94,7 @@ def get_relation_gt(instances, sample_num=-1):
 
 def get_fcn_roi_gt(sem_seg_gt, instances, fcn_roi_size):
     num_boxes = len(instances)
-    gt_boxes = instances.gt_boxes.long()
+    gt_boxes = instances.gt_boxes.tensor.long()
     fcn_roi_gt = torch.zeros((num_boxes, fcn_roi_size, fcn_roi_size)).type_as(sem_seg_gt)
 
     for i in range(num_boxes):

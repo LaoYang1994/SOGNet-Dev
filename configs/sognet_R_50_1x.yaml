@@ -41,6 +41,7 @@ MODEL:
   SOGNET:
     INSTANCE_LOSS_WEIGHT: 1.0
     FCN_ROI:
+      ENABLED: True
       LOSS_WEIGHT: 0.04
     RELATION:
       ENABLED: True

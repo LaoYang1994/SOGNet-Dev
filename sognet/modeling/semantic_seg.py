@@ -190,8 +190,8 @@ class XDeformConvSemSegFPNHead(nn.Module):
             if self.fcn_roi_on:
                 assert gt_fcn_roi is not None
                 assert instances is not None
-                rois = [x.gt_boxes.tensor for x in instances]
-                roi_feats = self.roi_pooler(seg_features, rois)
+                rois = [x.gt_boxes for x in instances]
+                roi_feats = self.roi_pooler([seg_features], rois)
                 roi_scores = self.predictor(roi_feats)
                 fcn_roi_loss = F.cross_entropy(
                     roi_scores, gt_fcn_roi, reduction="mean",

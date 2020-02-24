@@ -121,7 +121,8 @@ class SOGDatasetMapper:
             sem_seg_gt = transforms.apply_segmentation(sem_seg_gt)
             sem_seg_gt = torch.as_tensor(sem_seg_gt.astype("long"))
             if self.fcn_roi_on:
-                fcn_roi_gt = get_fcn_roi_gt(sem_seg_gt, dataset_dict["instances"], self.fcn_roi_on)
+                fcn_roi_gt = get_fcn_roi_gt(
+                        sem_seg_gt, dataset_dict["instances"], self.fcn_roi_size)
                 dataset_dict["fcn_roi"] = fcn_roi_gt
             dataset_dict["sem_seg"] = sem_seg_gt
 
