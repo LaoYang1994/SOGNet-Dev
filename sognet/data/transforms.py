@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import pycocotools.mask as mask_util
 import torch
+import torch.nn.functional as F
 
 from detectron2.structures import (
     BitMasks,
@@ -89,6 +90,21 @@ def get_relation_gt(instances, sample_num=-1):
         instances = instances[order]
 
     return instances, relation_mat
+
+
+def get_fcn_roi_gt(sem_seg_gt, instances, fcn_roi_size):
+    num_boxes = len(instances)
+    gt_boxes = instances.gt_boxes.long()
+    fcn_roi_gt = torch.zeros((num_boxes, fcn_roi_size, fcn_roi_size)).type_as(sem_seg_gt)
+
+    for i in range(num_boxes):
+        x1, y1, x2, y2 = gt_boxes[i]
+        roi_gt = F.interpolate(
+            sem_seg_gt[y1: y2 + 1, x1: x2 + 1][None, None, ...].float(),
+            size=(fcn_roi_size, fcn_roi_size))[0, 0].long()
+        fcn_roi_gt[i] = roi_gt
+
+    return fcn_roi_gt
 
 
 def pan_id2channel_id(pan_seg_gt, pan_ids, ch_id_shift=53, ignore_index=255):

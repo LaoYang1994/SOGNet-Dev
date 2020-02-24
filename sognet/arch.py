@@ -81,6 +81,12 @@ class SOGNet(nn.Module):
         else:
             gt_sem_seg = None
 
+        if "fcn_roi" in batched_inputs[0]:
+            gt_fcn_roi = [x["fcn_roi"].to(self.device) for x in batched_inputs]
+            gt_fcn_roi = torch.cat(gt_fcn_roi, dim=0)
+        else:
+            gt_fcn_roi = None
+
         if "relation" in batched_inputs[0]:
             gt_relations = [x["relation"].to(self.device) for x in batched_inputs]
         else:
@@ -104,18 +110,20 @@ class SOGNet(nn.Module):
         # roi branch
         gt_mask_logits, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
         # semantic branch
-        sem_seg_logits, sem_seg_losses = self.sem_seg_head(features, gt_sem_seg)
+        sem_seg_logits, sem_roi_losses = self.sem_seg_head(
+            features, gt_sem_seg, gt_instances, gt_fcn_roi)
         # panoptic branch
-        _, panoptic_losses = self.panoptic_head(
+        _, pan_relation_losses = self.panoptic_head(
                 gt_mask_logits, sem_seg_logits, gt_instances, gt_relations, gt_pan_seg)
 
         # loss
         losses = {}
         losses.update(proposal_losses)
         losses.update({k: v * self.instance_loss_weight for k, v in detector_losses.items()})
-        losses.update(sem_seg_losses)
-        # NOTICE: if relation enabled, panoptic_losses contain relation_losses
-        losses.update(panoptic_losses)
+        # NOTICE: if fcn_roi enabled, sem_roi_losses contain fcn_roi_losses
+        losses.update(sem_roi_losses)
+        # NOTICE: if relation enabled, pan_relation_losses contain relation_losses
+        losses.update(pan_relation_losses)
 
         return losses
 

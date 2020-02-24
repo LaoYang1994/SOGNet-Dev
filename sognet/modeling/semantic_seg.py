@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from detectron2.layers.deform_conv import DeformConv
 from detectron2.layers.roi_align import ROIAlign
 from detectron2.layers import Conv2d, ShapeSpec
+from detectron2.modeling.poolers import ROIAlign
 from detectron2.modeling.meta_arch.semantic_seg import SEM_SEG_HEADS_REGISTRY
 
 
@@ -126,15 +127,29 @@ class XDeformConvSemSegFPNHead(nn.Module):
 
         super(XDeformConvSemSegFPNHead, self).__init__()
 
-        self.in_features      = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES
-        feature_channels      = {k: v.channels for k, v in input_shape.items()}
-        self.ignore_value     = cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE
-        num_classes           = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
-        conv_dims             = cfg.MODEL.SEM_SEG_HEAD.CONVS_DIM
-        num_layers            = cfg.MODEL.SEM_SEG_HEAD.NUM_LAYERS
-        self.common_stride    = cfg.MODEL.SEM_SEG_HEAD.COMMON_STRIDE
-        norm                  = cfg.MODEL.SEM_SEG_HEAD.NORM
-        self.loss_weight      = cfg.MODEL.SEM_SEG_HEAD.LOSS_WEIGHT
+        self.in_features         = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES
+        feature_channels         = {k: v.channels for k, v in input_shape.items()}
+        self.ignore_value        = cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE
+        num_classes              = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES
+        conv_dims                = cfg.MODEL.SEM_SEG_HEAD.CONVS_DIM
+        num_layers               = cfg.MODEL.SEM_SEG_HEAD.NUM_LAYERS
+        self.common_stride       = cfg.MODEL.SEM_SEG_HEAD.COMMON_STRIDE
+        norm                     = cfg.MODEL.SEM_SEG_HEAD.NORM
+        self.sem_seg_loss_weight = cfg.MODEL.SEM_SEG_HEAD.LOSS_WEIGHT
+
+        self.fcn_roi_on       = cfg.MODEL.SOGNET.FCN_ROI.ENABLED
+        if self.fcn_roi_on:
+            self.fcn_roi_loss_weight   = cfg.MODEL.SOGNET.FCN_ROI.LOSS_WEIGHT
+            pooler_resolution = cfg.MODEL.ROI_MASK_HEAD.POOLER_RESOLUTION * 2
+            pooler_scale      = 1.0 / self.common_stride
+            sampling_ratio    = cfg.MODEL.ROI_MASK_HEAD.POOLER_SAMPLING_RATIO
+
+            self.roi_pooler = ROIAlign(
+                output_size=pooler_resolution,
+                spatial_scale=pooler_scale,
+                sampling_ratio=sampling_ratio,
+                aligned=False
+            )
 
         self.fcn_subnet = DeformConvFCNSubNet(
             feature_channels[self.in_features[0]], conv_dims, num_layers, with_norm=norm)
@@ -147,7 +162,7 @@ class XDeformConvSemSegFPNHead(nn.Module):
         nn.init.normal_(self.predictor.weight.data, 0, 0.01)
         self.predictor.bias.data.zero_()
 
-    def forward(self, features, targets=None):
+    def forward(self, features, gt_sem_seg=None, instances=None, gt_fcn_roi=None):
         seg_feature_list = []
         for i, f_name in enumerate(self.in_features):
             seg_feature = self.fcn_subnet(features[f_name])
@@ -163,14 +178,25 @@ class XDeformConvSemSegFPNHead(nn.Module):
                 mode="bilinear", align_corners=False)
 
         if self.training:
-            assert targets is not None
+            assert gt_sem_seg is not None
             losses = {}
             losses["loss_sem_seg"] = (
                 F.cross_entropy(
-                    sem_seg_scores_init_size, targets,
+                    sem_seg_scores_init_size, gt_sem_seg,
                     reduction="mean", ignore_index=self.ignore_value)
-                * self.loss_weight
+                * self.sem_seg_loss_weight
             )
+            if self.fcn_roi_on:
+                assert gt_fcn_roi is not None
+                assert instances is not None
+                rois = torch.cat([x.gt_boxes for x in instances], dim=0)
+                roi_feats = self.roi_pooler(seg_features, rois)
+                roi_scores = self.predictor(roi_feats)
+                fcn_roi_loss = F.cross_entropy(
+                    roi_scores, gt_fcn_roi, reduction="mean",
+                    ignore_index=self.ignore_value
+                )
+                losses.update({"loss_fcn_roi": fcn_roi_loss * self.fcn_roi_loss_weight})
             return sem_seg_scores, losses
         else:
             return sem_seg_scores_init_size, {}

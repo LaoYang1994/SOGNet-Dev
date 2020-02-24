@@ -9,7 +9,7 @@ from PIL import Image
 from detectron2.data import detection_utils as utils
 from detectron2.data import transforms as T
 
-from .transforms import annotations_to_instances, get_relation_gt, pan_id2channel_id
+from .transforms import annotations_to_instances, get_relation_gt, pan_id2channel_id, get_fcn_roi_gt
 
 """
 This file contains the default mapping that's applied to "dataset dicts".
@@ -33,7 +33,10 @@ class SOGDatasetMapper:
         self.img_format     = cfg.INPUT.FORMAT
         self.mask_format    = cfg.INPUT.MASK_FORMAT
         self.relation_on    = cfg.MODEL.SOGNET.RELATION.ENABLED
+        self.fcn_roi_on     = cfg.MODEL.SOGNET.FCN_ROI.ENABLED
         # fmt: on
+
+        self.fcn_roi_size = cfg.MODEL.ROI_MASK_HEAD.POOLER_RESOLUTION * 2
 
         self.stuff_cls_num  = cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES - cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.is_train = is_train
@@ -103,10 +106,7 @@ class SOGDatasetMapper:
             instances = utils.filter_empty_instances(instances)
             # TODO: design a data structure for storing relation mat
             if self.relation_on:
-                if len(instances) < 2:
-                    gt_relation = -1 * torch.ones((1, 1))
-                else:
-                    instances, gt_relation = get_relation_gt(instances)
+                instances, gt_relation = get_relation_gt(instances)
                 dataset_dict["relation"] = gt_relation
 
             if instances.has("bit_masks"):
@@ -120,6 +120,9 @@ class SOGDatasetMapper:
                 sem_seg_gt = np.asarray(sem_seg_gt, dtype="uint8")
             sem_seg_gt = transforms.apply_segmentation(sem_seg_gt)
             sem_seg_gt = torch.as_tensor(sem_seg_gt.astype("long"))
+            if self.fcn_roi_on:
+                fcn_roi_gt = get_fcn_roi_gt(sem_seg_gt, dataset_dict["instances"], self.fcn_roi_on)
+                dataset_dict["fcn_roi"] = fcn_roi_gt
             dataset_dict["sem_seg"] = sem_seg_gt
 
         if "pan_seg_file_name" in dataset_dict:
