@@ -162,8 +162,6 @@ def separate_coco_semantic_from_panoptic(
     del coco_ins
     del obj
 
-    # new_annos = reduce(lambda x, y: x + y, new_annos)
-
     new_instances_json = instance_json.replace("train", "sog_train").replace("val", "sog_val")
     print("Start writing to {} ...".format(new_instances_json))
 
@@ -179,8 +177,7 @@ def separate_coco_semantic_from_panoptic(
 
 if __name__ == "__main__":
     dataset_dir = os.path.join(os.path.dirname(__file__), "coco")
-    # for s in ["val2017", "train2017"]:
-    for s in ["train2017"]:
+    for s in ["val2017", "train2017"]:
         separate_coco_semantic_from_panoptic(
             os.path.join(dataset_dir, "annotations/instances_{}.json".format(s)),
             os.path.join(dataset_dir, "annotations/panoptic_{}.json".format(s)),
