@@ -128,6 +128,8 @@ class XDCNSemSegFPNHead(nn.Module):
 
         super(XDCNSemSegFPNHead, self).__init__()
 
+        self.device = torch.device(cfg.MODEL.DEVICE)
+
         self.in_features         = cfg.MODEL.SEM_SEG_HEAD.IN_FEATURES
         feature_channels         = {k: v.channels for k, v in input_shape.items()}
         self.ignore_value        = cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE
@@ -192,11 +194,11 @@ class XDCNSemSegFPNHead(nn.Module):
                 assert gt_fcn_roi is not None
                 assert instances is not None
                 if gt_fcn_roi.size(0) == 0:
-                    dummy_size = gt_fcn_roi.size()
-                    dummy_size[0] = len(instances)
+                    dummy_size = gt_fcn_roi.size()[-2:]
+                    dummy_size = (len(instances), ) + dummy_size
                     gt_fcn_roi = torch.zeros(dummy_size).type_as(gt_fcn_roi) + 255
-                    dummy_box = torch.tensor([0., 0., 1., 1.]).to(self.device)
-                    rois = [Box(dummy_box) for i in range(len(instances))] 
+                    dummy_box = torch.tensor([[0., 0., 1., 1.]]).to(self.device)
+                    rois = [Boxes(dummy_box) for i in range(len(instances))] 
                 else:
                     rois = [x.gt_boxes for x in instances]
                 roi_feats = self.roi_pooler([seg_features], rois)
