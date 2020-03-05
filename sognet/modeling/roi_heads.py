@@ -27,7 +27,7 @@ class SOGROIHeads(ROIHeads):
         super(SOGROIHeads, self).__init__(cfg, input_shape)
         self._init_box_head(cfg)
         self._init_mask_head(cfg)
-        self.sog_test_score_thresh        = cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
+        self.sog_test_score_thresh = cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
 
     def _init_box_head(self, cfg):
         # fmt: off

@@ -185,7 +185,7 @@ class PanopticHead(nn.Module):
 
             mask_panel[cls_idx[i], y0: y1, x0: x1] |= crop_mask
             thing_mask_logit[0, i, y0: y1, x0: x1] = (
-                    mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
+                    logit[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
 
         order_inds = (order > 0).nonzero().reshape(-1)
         instance = instance[order_inds]
@@ -209,7 +209,8 @@ class PanopticHead(nn.Module):
         if num_things == 0:
             return thing_logit
 
-        bbox = bbox / self.feat_stride
+        if self.training:
+            bbox = bbox / self.feat_stride
 
         for i in range(num_things):
             # TODO: check whether cls_idx > 0

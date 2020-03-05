@@ -51,6 +51,9 @@ MODEL:
     PANOPTIC:
       IGNORE_INDEX: 255
       LOSS_WEIGHT: 0.1
+      REMOVAL_THRESH: 0.3
+    POSTPROCESS:
+      INSTANCES_CONFIDENCE_THRESH: 0.6
 
 DATASETS:
   TRAIN: ("coco_2017_train_panoptic_sog",)
