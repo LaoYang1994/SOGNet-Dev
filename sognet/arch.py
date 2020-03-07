@@ -209,7 +209,7 @@ def pan_seg_postprocess(
                     "id": current_segment_id,
                     "isthing": True,
                     "category_id": pan_pred_cls.item(),
-                    "instance_id": inst_id.item(),
+                    "instance_id": inst_id.item() - stuff_num_classes,
                 }
             )
         else:
@@ -223,13 +223,13 @@ def pan_seg_postprocess(
                         "id": current_segment_id,
                         "isthing": True,
                         "category_id": pan_pred_cls.item(),
-                        "instance_id": inst_id.item(),
+                        "instance_id": inst_id.item() - stuff_num_classes,
                     }
                 )
     area_ids = pan_results.unique()
     sem_ids = area_ids[area_ids < stuff_num_classes]
     for sem_id in sem_ids:
-        mask = pan_results == sem_id
+        mask = (pan_results == sem_id) & (panoptic_seg == 0)
         if mask.sum() < stuff_area_limit:
             continue
         current_segment_id += 1

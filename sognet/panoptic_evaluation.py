@@ -41,8 +41,10 @@ class COCOPanopticEvaluatorWith2ChPNG(COCOPanopticEvaluator):
                 segments_info = [self._convert_category_id(x) for x in segments_info]
                 if self.gen_png:
                     png = self.gen_2ch_pngs(panoptic_img, segments_info)
+                    png_dir = os.path.join(self.output_dir, '2ch_png')
+                    os.makedirs(png_dir, exist_ok=True)
                     Image.fromarray(png).save(
-                        os.path.join(self.output_dir, file_name_png))
+                        os.path.join(png_dir, file_name_png))
                 self._predictions.append(
                     {
                         "image_id": input["image_id"],
@@ -58,7 +60,7 @@ class COCOPanopticEvaluatorWith2ChPNG(COCOPanopticEvaluator):
             seg_id = seg_info['id']
             mask = pan_seg == seg_id
             png[..., 0][mask] = seg_info['category_id']
-            if seg_info['isthing']:
+            if 'instance_id' in seg_info:
                 png[..., 1][mask] = seg_info['instance_id']
 
         return png

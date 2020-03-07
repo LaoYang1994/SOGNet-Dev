@@ -3,3 +3,4 @@ from .arch import SOGNet
 from .data import *
 from .modeling import *
 from .utils import *
+from .panoptic_evaluation import COCOPanopticEvaluatorWith2ChPNG

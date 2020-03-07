@@ -19,7 +19,7 @@ from detectron2.evaluation import (
     verify_results
 )
 
-from sognet import add_sognet_config, SOGDatasetMapper
+from sognet import add_sognet_config, SOGDatasetMapper, COCOPanopticEvaluatorWith2ChPNG
 
 class Trainer(DefaultTrainer):
 
@@ -42,7 +42,9 @@ class Trainer(DefaultTrainer):
         if evaluator_type in ["coco", "coco_panoptic_seg"]:
             evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
         if evaluator_type == "coco_panoptic_seg":
-            evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
+            evaluator_list.append(
+                    COCOPanopticEvaluatorWith2ChPNG(
+                        dataset_name, output_folder, gen_png=cfg.MODEL.SOGNET.GEN_PNG))
         elif evaluator_type == "cityscapes":
             assert (
                 torch.cuda.device_count() >= comm.get_rank()

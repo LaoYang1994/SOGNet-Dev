@@ -11,6 +11,7 @@ def add_sognet_config(cfg):
 
     _C.MODEL.SOGNET = CN()
     _C.MODEL.SOGNET.INSTANCE_LOSS_WEIGHT = 1.0
+    _C.MODEL.SOGNET.GEN_PNG = False
 
     _C.MODEL.SOGNET.FCN_ROI = CN({"ENABLED": True})
     _C.MODEL.SOGNET.FCN_ROI.LOSS_WEIGHT = 1.0

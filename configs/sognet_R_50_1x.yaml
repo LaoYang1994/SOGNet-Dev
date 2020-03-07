@@ -39,6 +39,7 @@ MODEL:
     NUM_CLASSES: 133
     NORM: "none"
   SOGNET:
+    GEN_PNG: True
     INSTANCE_LOSS_WEIGHT: 1.0
     FCN_ROI:
       ENABLED: True
@@ -54,6 +55,8 @@ MODEL:
       REMOVAL_THRESH: 0.3
     POSTPROCESS:
       INSTANCES_CONFIDENCE_THRESH: 0.6
+    COMBINE:
+      ENABLED: False
 
 DATASETS:
   TRAIN: ("coco_2017_train_panoptic_sog",)
