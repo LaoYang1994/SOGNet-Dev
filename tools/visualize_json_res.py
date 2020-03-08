@@ -35,7 +35,9 @@ def main():
         file_name_seg_map[seg['file_name']].append(seg)
 
     for path, segs in file_name_seg_map.items():
-        file_name = os.path.basename(path).replace('png', 'jpg')
+        file_name = os.path.basename(path).replace('jpg', 'png')
+        if file_name != '000000000285.png':
+            continue
         target_path = os.path.join(args.output_dir, 'sem_seg', file_name)
         h, w = segs[0]['segmentation']['size']
         png = np.zeros((h, w, 3), dtype=np.uint8)
@@ -44,10 +46,10 @@ def main():
             cat_id = x['category_id']
             color = color_map[cat_id]
             mask = maskUtils.decode(x['segmentation'])
-            for i in range(3):
-                png[..., i][mask] = color[i]
+            png[mask > 0] = color
         
         Image.fromarray(png).save(target_path)
 
 
-
+if __name__ == '__main__':
+    main()

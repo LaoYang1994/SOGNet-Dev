@@ -162,32 +162,33 @@ class PanopticHead(nn.Module):
 
         # TODO: In this place, roi upsample maybe is better
         for i in range(num_things):
-            ref_box = bbox[i]
-            w, h = bbox_wh[i]
+            idx = order[i]
+            ref_box = bbox[idx]
+            w, h = bbox_wh[idx]
             logit = F.interpolate(
-                mask_logit[i].view(1, 1, self.mask_size, self.mask_size),
+                mask_logit[idx].view(1, 1, self.mask_size, self.mask_size),
                 size=(h, w), mode='bilinear', align_corners=False)[0, 0]
-            mask = logit > 0
+            bit_mask = logit > 0
 
             x0 = max(ref_box[0], 0)
             x1 = min(ref_box[2] + 1, size[1])
             y0 = max(ref_box[1], 0)
             y1 = min(ref_box[3] + 1, size[0])
 
-            crop_mask = mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]]
+            crop_mask = bit_mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]]
             mask_area = crop_mask.sum()
-            crop_mask_panel = mask_panel[cls_idx[i], y0: y1, x0: x1]
+            crop_mask_panel = mask_panel[cls_idx[idx], y0: y1, x0: x1]
 
             if (mask_area == 0) or (
                 (crop_mask_panel & crop_mask).sum().float() / mask_area.float() > self.removal_thresh):
                 order[i] = -1
                 continue
 
-            mask_panel[cls_idx[i], y0: y1, x0: x1] |= crop_mask
-            thing_mask_logit[0, i, y0: y1, x0: x1] = (
+            mask_panel[cls_idx[idx], y0: y1, x0: x1] |= crop_mask
+            thing_mask_logit[0, idx, y0: y1, x0: x1] = (
                     logit[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
 
-        order_inds = (order > 0).nonzero().reshape(-1)
+        order_inds = order[order > 0]
         instance = instance[order_inds]
         thing_mask_logit = thing_mask_logit[:, order_inds]
         
