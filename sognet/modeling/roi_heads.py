@@ -151,12 +151,16 @@ class SOGROIHeads(ROIHeads):
 
         return mask_logits
 
-    def _forward_box(self, features, proposals):
+    def _forward_box(
+        self, features: Dict[str, torch.Tensor], proposals: List[Instances]
+    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
         """
-        Forward logic of the box prediction branch.
+        Forward logic of the box prediction branch. If `self.train_on_pred_boxes is True`,
+            the function puts predicted boxes in the `proposal_boxes` field of `proposals` argument.
 
         Args:
-            features (list[Tensor]): #level input features for box prediction
+            features (dict[str, Tensor]): mapping from feature map names to tensor.
+                Same as in :meth:`ROIHeads.forward`.
             proposals (list[Instances]): the per-image object proposals with
                 their matching ground truth.
                 Each has fields "proposal_boxes", and "objectness_logits",
@@ -166,7 +170,17 @@ class SOGROIHeads(ROIHeads):
             In training, a dict of losses.
             In inference, a list of `Instances`, the predicted instances.
         """
+        features = [features[f] for f in self.in_features]
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])
+        box_features = self.box_head(box_features)
+        predictions = self.box_predictor(box_features)
+        del box_features
+
+        if self.training:
+            return self.box_predictor.losses(predictions, proposals)
+        else:
+            pred_instances, _ = self.box_predictor.inference(predictions, proposals)
+            return pred_instances
         box_features = self.box_head(box_features)
         pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         del box_features
