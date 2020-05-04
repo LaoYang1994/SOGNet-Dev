@@ -1,3 +1,5 @@
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
 
@@ -6,6 +8,7 @@ from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
         select_foreground_proposals, build_box_head, build_mask_head)
 from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers
+from detectron2.structures import Boxes, ImageList, Instances
 
 from .rcnn_customized import PanFastRCNNOutputs, mask_rcnn_inference
 
@@ -24,24 +27,22 @@ class SOGROIHeads(ROIHeads):
     """
 
     def __init__(self, cfg, input_shape):
-        print(input_shape)
-        self.input_shape = input_shape
         super(SOGROIHeads, self).__init__(cfg, input_shape)
-        self._init_box_head(cfg)
-        self._init_mask_head(cfg)
+        self._init_box_head(cfg, input_shape)
+        self._init_mask_head(cfg, input_shape)
         self.sog_test_score_thresh = cfg.MODEL.SOGNET.POSTPROCESS.INSTANCES_CONFIDENCE_THRESH
 
-    def _init_box_head(self, cfg):
+    def _init_box_head(self, cfg, input_shape):
         # fmt: off
         pooler_resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        pooler_scales     = tuple(1.0 / self.input_shape[k].stride for k in self.in_features)
+        pooler_scales     = tuple(1.0 / input_shape[k].stride for k in self.in_features)
         sampling_ratio    = cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO
         pooler_type       = cfg.MODEL.ROI_BOX_HEAD.POOLER_TYPE
         # fmt: on
 
         # If StandardROIHeads is applied on multiple feature maps (as in FPN),
         # then we share the same predictors and therefore the channel counts must be the same
-        in_channels = [self.input_shape[f].channels for f in self.in_features]
+        in_channels = [input_shape[f].channels for f in self.in_features]
         # Check all channel counts are equal
         assert len(set(in_channels)) == 1, in_channels
         in_channels = in_channels[0]
@@ -58,17 +59,15 @@ class SOGROIHeads(ROIHeads):
         self.box_head = build_box_head(
             cfg, ShapeSpec(channels=in_channels, height=pooler_resolution, width=pooler_resolution)
         )
-        self.box_predictor = FastRCNNOutputLayers(
-            self.box_head.output_size, self.num_classes, self.cls_agnostic_bbox_reg
-        )
+        self.box_predictor = FastRCNNOutputLayers(cfg, self.box_head.output_shape)
 
-    def _init_mask_head(self, cfg):
+    def _init_mask_head(self, cfg, input_shape):
         # fmt: off
         self.mask_on           = cfg.MODEL.MASK_ON
         if not self.mask_on:
             return
         pooler_resolution = cfg.MODEL.ROI_MASK_HEAD.POOLER_RESOLUTION
-        pooler_scales     = tuple(1.0 / self.feature_strides[k] for k in self.in_features)
+        pooler_scales     = tuple(1.0 / input_shape[k].stride for k in self.in_features)
         sampling_ratio    = cfg.MODEL.ROI_MASK_HEAD.POOLER_SAMPLING_RATIO
         pooler_type       = cfg.MODEL.ROI_MASK_HEAD.POOLER_TYPE
         # fmt: on
@@ -188,7 +187,9 @@ class SOGROIHeads(ROIHeads):
             )
             return det_instances, pan_instances
 
-    def _forward_mask(self, features, instances):
+    def _forward_mask(
+        self, features: Dict[str, torch.Tensor], instances: List[Instances]
+    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
         """
         Forward logic of the mask prediction branch.
 
