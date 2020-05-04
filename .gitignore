@@ -5,8 +5,6 @@ inference_test_output
 .vscode
 logs
 
-train.sh
-
 *.jpg
 *.png
 *.txt

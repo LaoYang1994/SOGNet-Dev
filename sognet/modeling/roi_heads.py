@@ -24,6 +24,7 @@ class SOGROIHeads(ROIHeads):
     """
 
     def __init__(self, cfg, input_shape):
+        print(input_shape)
         self.input_shape = input_shape
         super(SOGROIHeads, self).__init__(cfg, input_shape)
         self._init_box_head(cfg)
@@ -40,7 +41,7 @@ class SOGROIHeads(ROIHeads):
 
         # If StandardROIHeads is applied on multiple feature maps (as in FPN),
         # then we share the same predictors and therefore the channel counts must be the same
-        in_channels = [self.feature_channels[f] for f in self.in_features]
+        in_channels = [self.input_shape[f].channels for f in self.in_features]
         # Check all channel counts are equal
         assert len(set(in_channels)) == 1, in_channels
         in_channels = in_channels[0]
