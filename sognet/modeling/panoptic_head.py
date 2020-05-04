@@ -7,7 +7,7 @@ import numpy as np
 
 from detectron2.structures import Instances
 from detectron2.layers import cat
-from detectron2.larger.mask_ops import _do_paste_mask
+from detectron2.layers.mask_ops import _do_paste_mask
 
 from .relation_head import build_relation_head
 from ..utils import multi_apply, reduce_loss

@@ -24,6 +24,7 @@ class SOGROIHeads(ROIHeads):
     """
 
     def __init__(self, cfg, input_shape):
+        self.input_shape = input_shape
         super(SOGROIHeads, self).__init__(cfg, input_shape)
         self._init_box_head(cfg)
         self._init_mask_head(cfg)
@@ -32,7 +33,7 @@ class SOGROIHeads(ROIHeads):
     def _init_box_head(self, cfg):
         # fmt: off
         pooler_resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        pooler_scales     = tuple(1.0 / self.feature_strides[k] for k in self.in_features)
+        pooler_scales     = tuple(1.0 / self.input_shape[k].stride for k in self.in_features)
         sampling_ratio    = cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO
         pooler_type       = cfg.MODEL.ROI_BOX_HEAD.POOLER_TYPE
         # fmt: on
