@@ -90,21 +90,20 @@ class SOGROIHeads(ROIHeads):
         """
         del images
         if self.training:
+            assert targets
             proposals = self.label_and_sample_proposals(proposals, targets)
 
-        features_list = [features[f] for f in self.in_features]
-
         if self.training:
-            losses = self._forward_box(features_list, proposals)
+            losses = self._forward_box(features, proposals)
             # During training the proposals used by the box head are
             # used by the mask, keypoint (and densepose) heads.
-            losses.update(self._forward_mask(features_list, proposals))
+            losses.update(self._forward_mask(features, proposals))
             gt_mask_logits = self.forward_for_feature_with_given_boxes(features, targets)
 
             del targets
             return gt_mask_logits, losses
         else:
-            det_instances, pan_instances = self._forward_box(features_list, proposals)
+            det_instances, pan_instances = self._forward_box(features, proposals)
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
             det_instances = self.forward_with_given_boxes(features, det_instances)
@@ -181,6 +180,7 @@ class SOGROIHeads(ROIHeads):
         else:
             pred_instances, _ = self.box_predictor.inference(predictions, proposals)
             return pred_instances
+
         box_features = self.box_head(box_features)
         pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         del box_features
@@ -220,6 +220,8 @@ class SOGROIHeads(ROIHeads):
         if not self.mask_on:
             return {} if self.training else instances
 
+        features = [features[f] for f in self.in_features]
+
         if self.training:
             # The loss is only defined on positive proposals.
             proposals, _ = select_foreground_proposals(instances, self.num_classes)
@@ -232,3 +234,4 @@ class SOGROIHeads(ROIHeads):
             mask_logits = self.mask_head.layers(mask_features)
             mask_rcnn_inference(mask_logits, instances)
             return instances
+
