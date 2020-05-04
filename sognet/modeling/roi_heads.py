@@ -72,7 +72,7 @@ class SOGROIHeads(ROIHeads):
         pooler_type       = cfg.MODEL.ROI_MASK_HEAD.POOLER_TYPE
         # fmt: on
 
-        in_channels = [self.feature_channels[f] for f in self.in_features][0]
+        in_channels = [input_shape[f].channels for f in self.in_features][0]
 
         self.mask_pooler = ROIPooler(
             output_size=pooler_resolution,
