@@ -129,7 +129,6 @@ class SOGROIHeads(ROIHeads):
         """
         assert not self.training
         assert instances[0].has("pred_boxes") and instances[0].has("pred_classes")
-        features = [features[f] for f in self.in_features]
 
         instances = self._forward_mask(features, instances)
         return instances
@@ -177,27 +176,7 @@ class SOGROIHeads(ROIHeads):
         if self.training:
             return self.box_predictor.losses(predictions, proposals)
         else:
-            pred_instances, _ = self.box_predictor.inference(predictions, proposals)
-            return pred_instances
-
-        box_features = self.box_head(box_features)
-        pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
-        del box_features
-
-        outputs = PanFastRCNNOutputs(
-            self.box2box_transform,
-            pred_class_logits,
-            pred_proposal_deltas,
-            proposals,
-            self.smooth_l1_beta,
-        )
-        if self.training:
-            return outputs.losses()
-        else:
-            det_instances, pan_instances = outputs.inference(
-                self.test_score_thresh, self.sog_test_score_thresh, 
-                self.test_nms_thresh, self.test_detections_per_img
-            )
+            det_instances, pan_instances = self.box_predictor.inference(predictions, proposals)
             return det_instances, pan_instances
 
     def _forward_mask(
