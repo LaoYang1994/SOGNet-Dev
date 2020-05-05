@@ -85,7 +85,9 @@ class PanopticHead(nn.Module):
         feat_size = stuff_logit.size()[-2:]
 
         if self.training:
-            thing_mask_logit = self._unmap_mask_logit_single(mask_logit, instance, feat_size)
+            # thing_mask_logit = self._unmap_mask_logit_single(mask_logit, instance, feat_size)
+            thing_mask_logit = self.paste_mask_logit_in_image(
+                    mask_logit, instance.gt_boxes.tensor / self.feat_stride, feat_size)
         else:
             thing_mask_logit, instance = self._unmap_mask_removal(mask_logit, instance, feat_size)
 
@@ -146,7 +148,7 @@ class PanopticHead(nn.Module):
     def paste_mask_logit_in_image(self, mask_logits, boxes, image_shape):
         assert mask_logits.shape[-1] == mask_logits.shape[-2], \
             "Only square mask predictions are supported"
-        N = len(mask_logits.size(0))
+        N = mask_logits.size(0)
         if N == 0:
             return mask_logits.new_empty((0,) + image_shape, dtype=torch.float)
         if not isinstance(boxes, torch.Tensor):
@@ -167,7 +169,7 @@ class PanopticHead(nn.Module):
             assert (
                 num_chunks <= N
             ), "Default GPU_MEM_LIMIT in mask_ops.py is too small; try increasing it"
-        chunks = torch.chunk(torch.arange(N, device=device), num_chunks)
+        chunks = torch.chunk(torch.arange(N, device=self.device), num_chunks)
 
         img_mask_logits = torch.zeros(
             N, img_h, img_w, device=self.device, dtype=torch.float
