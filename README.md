@@ -13,7 +13,7 @@ The panoptic segmentation task requires a unified result from semantic and insta
 
 ## Usage
 + Pytorch1.4 or above and Python 3 are needed.
-+ **We suggest using the detectron2 repo that we have forked!!!**
++ **We suggest using the [detectron2](https://github.com/LaoYang1994/detectron2) repo that we have forked!!!**
 
 We provide our best model based on resnet50, you can download [here](https://drive.google.com/open?id=1Lc3ru2pigkA3ymYZPRfopxgnMMBxOZ1j).
 
