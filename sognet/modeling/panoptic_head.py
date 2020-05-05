@@ -114,37 +114,6 @@ class PanopticHead(nn.Module):
 
         return pan_logit, relation_loss, pan_loss
 
-    # To be deleted
-    def _unmap_mask_logit_single(self, mask_logit, instance, size):
-        bbox = instance.gt_boxes.tensor
-        cls_idx = instance.gt_classes
-
-        num_things = cls_idx.size(0)
-        thing_mask_logit = torch.zeros((1, num_things) + size, device=self.device)
-
-        if num_things == 0:
-            return thing_mask_logit
-
-        bbox = bbox / self.feat_stride
-        bbox = bbox.long()
-        bbox_wh = bbox[:, 2:] - bbox[:, :2] + 1
-
-        # TODO: In this place, roi upsample maybe is better
-        for i in range(num_things):
-            ref_box = bbox[i]
-            w, h = bbox_wh[i]
-            mask = F.interpolate(
-                mask_logit[i].view(1, 1, self.mask_size, self.mask_size),
-                size=(h, w), mode='bilinear', align_corners=False)
-            x0 = max(ref_box[0], 0)
-            x1 = min(ref_box[2] + 1, size[1])
-            y0 = max(ref_box[1], 0)
-            y1 = min(ref_box[3] + 1, size[0])
-            thing_mask_logit[0, i, y0: y1, x0: x1] = (
-                    mask[0, 0, y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
-        
-        return thing_mask_logit
-
     def paste_mask_logit_in_image(self, mask_logits, boxes, image_shape):
         assert mask_logits.shape[-1] == mask_logits.shape[-2], \
             "Only square mask predictions are supported"
@@ -185,58 +154,45 @@ class PanopticHead(nn.Module):
 
     def _unmap_mask_removal(self, mask_logit, instance, size):
         num_things = len(instance)
+        # TODO: check whether it's needed!
         if num_things == 0:
             thing_mask_logit = torch.zeros((1, 1) + size, device=self.device)
             return thing_mask_logit, instance
 
-        thing_mask_logit = torch.zeros((1, num_things) + size, device=self.device)
+        boxes   = instance.pred_boxes
+        # Maybe there is a bug in this place.
+        pred_classes = instance.pred_classes
 
-        score = instance.scores
-        order = score.argsort(descending=True)
-        instance = instance[order]
-        mask_logit = mask_logit[order]
-
-        bbox = instance.pred_boxes
-        cls_idx = instance.pred_classes
-        # for mask removal
+        thing_mask_logit = self.paste_mask_logit_in_image(mask_logit, boxes, size)
         mask_panel = torch.zeros((self.thing_num_classes, ) + size, 
                 dtype=torch.bool, device=self.device)
 
-        bbox = bbox.long()
-        bbox_wh = bbox[:, 2:] - bbox[:, :2] + 1
+        score = instance.scores
+        sorted_inds = score.argsort(descending=True)
 
-        # TODO: In this place, maybe roi upsample or grid sample is better
-        for i in range(num_things):
-            ref_box = bbox[i]
-            w, h = bbox_wh[i]
-            logit = F.interpolate(
-                mask_logit[i].view(1, 1, self.mask_size, self.mask_size),
-                size=(h, w), mode='bilinear', align_corners=False)[0, 0]
+        left_flag = torch.ones(num_things)
+
+        for inst_id in sorted_inds:
+            cls_idx = pred_classes[inst_id]
+            logit = thing_mask_logit[inst_id]
             bit_mask = logit > 0
 
-            x0 = max(ref_box[0], 0)
-            y0 = max(ref_box[1], 0)
-            x1 = min(ref_box[2] + 1, size[1])
-            y1 = min(ref_box[3] + 1, size[0])
-
-            crop_mask = bit_mask[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]]
-            mask_area = crop_mask.sum()
-            crop_mask_panel = mask_panel[cls_idx[i], y0: y1, x0: x1]
+            mask_area = bit_mask.sum()
+            cls_panel = mask_panel[cls_idx]
 
             if (mask_area == 0) or (
-                (crop_mask_panel & crop_mask).sum().float() / 
+                (cls_panel & bit_mask).sum().float() / 
                     mask_area.float() > self.removal_thresh):
-                order[i] = -1
+                left_flag[inst_id] = -1
                 continue
 
-            mask_panel[cls_idx[i], y0: y1, x0: x1] |= crop_mask
-            thing_mask_logit[0, i, y0: y1, x0: x1] = (
-                    logit[y0 - ref_box[1]: y1 - ref_box[1], x0 - ref_box[0]: x1 - ref_box[0]])
+            mask_panel[cls_idx] |= bit_mask
 
-        order_inds = (order >= 0).nonzero().reshape(-1)
-        instance = instance[order_inds]
-        thing_mask_logit = thing_mask_logit[:, order_inds]
-        
+        left_inds = (left_flag > 0).nonzero().flatten()
+
+        instance = instance[left_inds]
+        thing_mask_logit = thing_mask_logit[left_inds]
+
         return thing_mask_logit, instance
 
     def _crop_thing_logit_single(self, thing_sem_logit, instance):
@@ -255,20 +211,19 @@ class PanopticHead(nn.Module):
             thing_logit = torch.ones(1, 1, h, w, device=self.device) * (-10)
             return thing_logit
 
-        thing_logit = torch.zeros(1, num_things, h, w, device=self.device)
+        thing_logit = torch.zeros(num_things, h, w, device=self.device)
 
         if self.training:
             bbox = bbox / self.feat_stride
+        # TODO: This is different upsnet, to check!
+        bbox = bbox.round().int()
 
         for i in range(num_things):
             # TODO: check whether cls_idx > 0
-            x1 = int(bbox[i, 0])
-            y1 = int(bbox[i, 1])
-            x2 = int(bbox[i, 2].round() + 1)
-            y2 = int(bbox[i, 3].round() + 1)
-            thing_logit[0, i, y1: y2, x1: x2] = thing_sem_logit[cls_idx[i], y1: y2, x1: x2]
+            x1, y1, x2, y2 = bbox[i]
+            thing_logit[i, y1: y2, x1: x2] = thing_sem_logit[cls_idx[i], y1: y2, x1: x2]
 
-        return thing_logit
+        return thing_logit[None, ...]
 
     def _separate_fetch_logits(self, logits, instances):
         if self.training:
@@ -283,4 +238,3 @@ class PanopticHead(nn.Module):
                cls_idx.view(-1, 1, 1, 1).expand(-1, -1, self.mask_size, self.mask_size)).squeeze(1)
 
         return torch.split(logits, ins_num_list)
-
