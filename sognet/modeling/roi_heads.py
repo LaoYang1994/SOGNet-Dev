@@ -7,10 +7,9 @@ from detectron2.layers import ShapeSpec, cat
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import (ROI_HEADS_REGISTRY, ROIHeads, 
         select_foreground_proposals, build_box_head, build_mask_head)
-from detectron2.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers
 from detectron2.structures import Boxes, ImageList, Instances
 
-from .rcnn_customized import PanFastRCNNOutputs, mask_rcnn_inference
+from .rcnn_customized import FastRCNNOutputLayers, mask_rcnn_inference
 
 
 @ROI_HEADS_REGISTRY.register()
