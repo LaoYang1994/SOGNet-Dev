@@ -30,10 +30,6 @@ We provide our best model based on resnet50, you can download [here](https://dri
 |---------|--------------|------|------|------|---------|---------|
 |SOGNet-50|      val     | 43.7 | 78.7 | 53.5 |  50.6   |   33.1  |
 
-
-## TODO
-- [ ] Reimplement the code in detectron2. 
-
 ## Citation
 If you find SOGNet useful in your research, please consider citing:
 ```latex
