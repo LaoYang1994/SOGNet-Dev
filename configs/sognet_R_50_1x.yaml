@@ -59,11 +59,11 @@ MODEL:
       ENABLED: False
 
 DATASETS:
-  #TRAIN: ("coco_2017_train_panoptic_sog",)
-  TRAIN: ("coco_2017_val_panoptic_sog_debug",)
+  TRAIN: ("coco_2017_train_panoptic_sog",)
+  # TRAIN: ("coco_2017_val_panoptic_sog_debug",)
   TEST: ("coco_2017_val_panoptic_sog",)
 SOLVER:
-  IMS_PER_BATCH: 4
+  IMS_PER_BATCH: 8
   BASE_LR: 0.01
   STEPS: (120000, 160000)
   MAX_ITER: 180000
