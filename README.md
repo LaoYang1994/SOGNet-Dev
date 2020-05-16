@@ -13,9 +13,17 @@ The panoptic segmentation task requires a unified result from semantic and insta
 
 ## Usage
 + Pytorch1.4 or above and Python 3 are needed.
-+ **We suggest using the [detectron2](https://github.com/LaoYang1994/detectron2) repo that we have forked!!!**
-
-We provide our best model based on resnet50, you can download [here](https://drive.google.com/open?id=1Lc3ru2pigkA3ymYZPRfopxgnMMBxOZ1j).
++ **We suggest using the [detectron2](https://github.com/LaoYang1994/detectron2) repo that we have forked!!!**.
++ Git the repo to **detectron2/projects** and ```cd SOGNet-Dev```
++ Generate semantic GTs:
+```
+cd datasets
+python gen_coco_sem_seg_gt.py
+```
++ Train or Test：
+```
+sh train.sh or sh test.sh
+```
 
 |         |**test split**|**PQ**|**SQ**|**RQ**|**PQ_th**|**PQ_st**|
 |---------|--------------|------|------|------|---------|---------|
