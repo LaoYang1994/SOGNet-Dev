@@ -179,4 +179,3 @@ for (
 
     register_dataset(
             image_root, instances_json, panoptic_root, panoptic_json, sem_seg_root, sog_metadata)
-

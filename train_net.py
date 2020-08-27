@@ -1,72 +1,67 @@
 import os
-import logging
-from collections import OrderedDict
-
 import torch
-
+import logging
 import detectron2.utils.comm as comm
+from collections import OrderedDict
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import (MetadataCatalog,
-                             build_detection_train_loader, build_detection_test_loader)
-from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
+from detectron2.data import (
+    MetadataCatalog,
+    build_detection_train_loader,
+    build_detection_test_loader
+)
+from detectron2.engine import (
+    DefaultTrainer,
+    default_argument_parser,
+    default_setup,
+    launch
+)
 from detectron2.evaluation import (
     COCOEvaluator,
-    COCOPanopticEvaluator,
     DatasetEvaluators,
     SemSegEvaluator,
     verify_results
 )
 
-from sognet import add_sognet_config, SOGDatasetMapper, COCOPanopticEvaluatorWith2ChPNG
+from sognet import (
+    add_sognet_config,
+    SOGDatasetMapper,
+    COCOPanopticEvaluatorWith2ChPNG
+)
 
 class Trainer(DefaultTrainer):
-
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         evaluator_list = []
-        evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
-        if evaluator_type in ["sem_seg", "coco_panoptic_seg"]:
-            evaluator_list.append(
-                SemSegEvaluator(
-                    dataset_name,
-                    distributed=True,
-                    num_classes=cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
-                    ignore_label=cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE,
-                    output_dir=output_folder
-                )
+        # semantic seg evaluation
+        evaluator_list.append(
+            SemSegEvaluator(
+                dataset_name,
+                distributed=True,
+                num_classes=cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
+                ignore_label=cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE,
+                output_dir=output_folder
             )
-        if evaluator_type in ["coco", "coco_panoptic_seg"]:
-            evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
-        if evaluator_type == "coco_panoptic_seg":
-            evaluator_list.append(
-                    COCOPanopticEvaluatorWith2ChPNG(
-                        dataset_name, output_folder, gen_png=cfg.MODEL.SOGNET.GEN_PNG))
-        elif evaluator_type == "cityscapes":
-            assert (
-                torch.cuda.device_count() >= comm.get_rank()
-            ), "CityscapesEvaluator currently do not work with multiple machines."
-            return CityscapesEvaluator(dataset_name)
+        )
+        # detection evaluation
+        evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
+        # panoptic evaluation
+        evaluator_list.append(
+            COCOPanopticEvaluatorWith2ChPNG(
+                dataset_name, output_folder, gen_png=cfg.MODEL.SOGNET.GEN_PNG))
 
-        if len(evaluator_list) == 0:
-            raise NotImplementedError(
-                "no Evaluator for the dataset {} with the type {}".format(
-                    dataset_name, evaluator_type
-                )
-            )
-        elif len(evaluator_list) == 1:
-            return evaluator_list[0]
         return DatasetEvaluators(evaluator_list)
+
+    @classmethod
+    def build_train_loader(cls, cfg):
+        return build_detection_train_loader(cfg, mapper=SOGDatasetMapper(cfg, True))
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
         return build_detection_test_loader(cfg, dataset_name, mapper=SOGDatasetMapper(cfg, False))
 
-    @classmethod
-    def build_train_loader(cls, cfg):
-        return build_detection_train_loader(cfg, mapper=SOGDatasetMapper(cfg, True))
 
 def setup(args):
     """
@@ -93,8 +88,6 @@ def main(args):
         res = Trainer.test(cfg, model)
         if comm.is_main_process():
             verify_results(cfg, res)
-        if cfg.TEST.AUG.ENABLED:
-            res.update(Trainer.test_with_TTA(cfg, model))
         return res
 
     trainer = Trainer(cfg)
