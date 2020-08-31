@@ -44,3 +44,4 @@ If you find SOGNet useful in your research, please consider citing:
 - [ ] check inference
 - [ ] input data: 选择合适的数据组织方式（去掉没有物体的图片）
 - [ ] pan head: 貌似少了一个channel
+- [ ] 分部分debug，分别用SOG组建出detection, sem_seg, pan_seg三个模块来确定问题
